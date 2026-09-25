@@ -16,7 +16,7 @@ jobs:
   publish-provider-package:
     uses: crossplane-contrib/provider-workflows/.github/workflows/publish-provider-non-family.yml@main
     with:
-      repository: provider-minio
+      repository: provider-upjet-minio
       registry_org: kaiyga
       version: ${{ github.event.inputs.version }}
       go-version: ${{ github.event.inputs.go-version }}
