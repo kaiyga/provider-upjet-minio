@@ -24,8 +24,8 @@ import (
 )
 
 const (
-	errGetProviderConfig  = "cannot get ProviderConfig"
-	errExtractCredentials = "cannot extract credentials"
+	errGetProviderConfig   = "cannot get ProviderConfig"
+	errExtractCredentials  = "cannot extract credentials"
 	errValidateCredentials = "cannot validate credentials"
 )
 
@@ -48,7 +48,7 @@ func buildMinioURL(server string, useSSL bool) (string, error) {
 // validateMinioCredentials validates Minio credentials by making a test API call
 func validateMinioCredentials(ctx context.Context, creds map[string]string) error {
 	server := creds["minio_server"]
-	
+
 	// Parse SSL setting (default to false if not provided)
 	useSSL := false
 	if sslStr := creds["minio_ssl"]; sslStr != "" {
@@ -78,6 +78,7 @@ func validateMinioCredentials(ctx context.Context, creds map[string]string) erro
 	// Create HTTP client with SSL configuration
 	transport := &http.Transport{}
 	if useSSL && insecure {
+		// #nosec G402 -- InsecureSkipVerify is explicitly requested by user configuration (minio_insecure)
 		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 
@@ -96,7 +97,9 @@ func validateMinioCredentials(ctx context.Context, creds map[string]string) erro
 	if err != nil {
 		return fmt.Errorf("failed to connect to Minio server at %s: %w", url, err)
 	}
-	defer resp.Body.Close()
+	if err := resp.Body.Close(); err != nil {
+		return fmt.Errorf("failed to read Minio server response at %s: %w", url, err)
+	}
 
 	// For Minio, we just need to verify the server is reachable
 	// The actual authentication will be handled by the Terraform provider
@@ -185,3 +188,4 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 		Watches(&v1beta1.ProviderConfigUsage{}, &resource.EnqueueRequestForProviderConfig{}).
 		Complete(r)
 }
+
