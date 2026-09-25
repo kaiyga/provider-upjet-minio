@@ -2,7 +2,7 @@
 # Setup Project
 
 PROJECT_NAME ?= provider-minio  
-PROJECT_REPO ?= github.com/markopolo123/provider-upjet-minio
+PROJECT_REPO ?= github.com/kaiyga/provider-upjet-minio
 
 export TERRAFORM_VERSION ?= 1.5.7
 
