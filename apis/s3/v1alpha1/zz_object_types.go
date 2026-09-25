@@ -16,7 +16,7 @@ import (
 type ObjectInitParameters struct {
 
 	// Name of the bucket
-	// +crossplane:generate:reference:type=github.com/markopolo123/provider-upjet-minio/apis/s3/v1alpha1.Bucket
+	// +crossplane:generate:reference:type=github.com/kaiyga/provider-upjet-minio/apis/s3/v1alpha1.Bucket
 	BucketName *string `json:"bucketName,omitempty" tf:"bucket_name,omitempty"`
 
 	// Reference to a Bucket in s3 to populate bucketName.
@@ -75,7 +75,7 @@ type ObjectObservation struct {
 type ObjectParameters struct {
 
 	// Name of the bucket
-	// +crossplane:generate:reference:type=github.com/markopolo123/provider-upjet-minio/apis/s3/v1alpha1.Bucket
+	// +crossplane:generate:reference:type=github.com/kaiyga/provider-upjet-minio/apis/s3/v1alpha1.Bucket
 	// +kubebuilder:validation:Optional
 	BucketName *string `json:"bucketName,omitempty" tf:"bucket_name,omitempty"`
 

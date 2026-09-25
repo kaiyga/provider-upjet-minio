@@ -10,14 +10,14 @@ import (
 
 	ujconfig "github.com/crossplane/upjet/pkg/config"
 
-	"github.com/markopolo123/provider-upjet-minio/config/iam"
-	"github.com/markopolo123/provider-upjet-minio/config/kms"
-	"github.com/markopolo123/provider-upjet-minio/config/s3"
+	"github.com/kaiyga/provider-upjet-minio/config/iam"
+	"github.com/kaiyga/provider-upjet-minio/config/kms"
+	"github.com/kaiyga/provider-upjet-minio/config/s3"
 )
 
 const (
 	resourcePrefix = "minio"
-	modulePath     = "github.com/markopolo123/provider-upjet-minio"
+	modulePath     = "github.com/kaiyga/provider-upjet-minio"
 )
 
 //go:embed schema.json

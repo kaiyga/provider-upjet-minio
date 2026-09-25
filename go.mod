@@ -1,4 +1,4 @@
-module github.com/markopolo123/provider-upjet-minio
+module github.com/kaiyga/provider-upjet-minio
 
 go 1.21
 
@@ -128,4 +128,4 @@ require (
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
 
-replace github.com/markopolo123/provider-upjet-minio => ./
+replace github.com/kaiyga/provider-upjet-minio => ./

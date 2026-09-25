@@ -21,8 +21,8 @@ import (
 	"github.com/pkg/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	v1alpha1 "github.com/markopolo123/provider-upjet-minio/apis/s3/v1alpha1"
-	features "github.com/markopolo123/provider-upjet-minio/internal/features"
+	v1alpha1 "github.com/kaiyga/provider-upjet-minio/apis/s3/v1alpha1"
+	features "github.com/kaiyga/provider-upjet-minio/internal/features"
 )
 
 // Setup adds a controller that reconciles BucketVersioning managed resources.

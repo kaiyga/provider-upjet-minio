@@ -11,7 +11,7 @@ import (
 
 	"github.com/crossplane/upjet/pkg/pipeline"
 
-	"github.com/markopolo123/provider-upjet-minio/config"
+	"github.com/kaiyga/provider-upjet-minio/config"
 )
 
 func main() {

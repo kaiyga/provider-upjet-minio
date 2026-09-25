@@ -9,17 +9,17 @@ import (
 
 	"github.com/crossplane/upjet/pkg/controller"
 
-	group "github.com/markopolo123/provider-upjet-minio/internal/controller/iam/group"
-	policy "github.com/markopolo123/provider-upjet-minio/internal/controller/iam/policy"
-	serviceaccount "github.com/markopolo123/provider-upjet-minio/internal/controller/iam/serviceaccount"
-	user "github.com/markopolo123/provider-upjet-minio/internal/controller/iam/user"
-	key "github.com/markopolo123/provider-upjet-minio/internal/controller/kms/key"
-	providerconfig "github.com/markopolo123/provider-upjet-minio/internal/controller/providerconfig"
-	bucket "github.com/markopolo123/provider-upjet-minio/internal/controller/s3/bucket"
-	bucketnotification "github.com/markopolo123/provider-upjet-minio/internal/controller/s3/bucketnotification"
-	bucketpolicy "github.com/markopolo123/provider-upjet-minio/internal/controller/s3/bucketpolicy"
-	bucketversioning "github.com/markopolo123/provider-upjet-minio/internal/controller/s3/bucketversioning"
-	object "github.com/markopolo123/provider-upjet-minio/internal/controller/s3/object"
+	group "github.com/kaiyga/provider-upjet-minio/internal/controller/iam/group"
+	policy "github.com/kaiyga/provider-upjet-minio/internal/controller/iam/policy"
+	serviceaccount "github.com/kaiyga/provider-upjet-minio/internal/controller/iam/serviceaccount"
+	user "github.com/kaiyga/provider-upjet-minio/internal/controller/iam/user"
+	key "github.com/kaiyga/provider-upjet-minio/internal/controller/kms/key"
+	providerconfig "github.com/kaiyga/provider-upjet-minio/internal/controller/providerconfig"
+	bucket "github.com/kaiyga/provider-upjet-minio/internal/controller/s3/bucket"
+	bucketnotification "github.com/kaiyga/provider-upjet-minio/internal/controller/s3/bucketnotification"
+	bucketpolicy "github.com/kaiyga/provider-upjet-minio/internal/controller/s3/bucketpolicy"
+	bucketversioning "github.com/kaiyga/provider-upjet-minio/internal/controller/s3/bucketversioning"
+	object "github.com/kaiyga/provider-upjet-minio/internal/controller/s3/object"
 )
 
 // Setup creates all controllers with the supplied logger and adds them to

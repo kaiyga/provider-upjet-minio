@@ -20,7 +20,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/markopolo123/provider-upjet-minio/apis/v1beta1"
+	"github.com/kaiyga/provider-upjet-minio/apis/v1beta1"
 )
 
 const (

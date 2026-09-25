@@ -31,12 +31,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 
-	"github.com/markopolo123/provider-upjet-minio/apis"
-	"github.com/markopolo123/provider-upjet-minio/apis/v1alpha1"
-	"github.com/markopolo123/provider-upjet-minio/config"
-	"github.com/markopolo123/provider-upjet-minio/internal/clients"
-	"github.com/markopolo123/provider-upjet-minio/internal/controller"
-	"github.com/markopolo123/provider-upjet-minio/internal/features"
+	"github.com/kaiyga/provider-upjet-minio/apis"
+	"github.com/kaiyga/provider-upjet-minio/apis/v1alpha1"
+	"github.com/kaiyga/provider-upjet-minio/config"
+	"github.com/kaiyga/provider-upjet-minio/internal/clients"
+	"github.com/kaiyga/provider-upjet-minio/internal/controller"
+	"github.com/kaiyga/provider-upjet-minio/internal/features"
 )
 
 func main() {
