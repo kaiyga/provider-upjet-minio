@@ -70,7 +70,6 @@ type ProviderConfigUsage struct {
 	xpv1.ProviderConfigUsage `json:",inline"`
 }
 
-
 // +kubebuilder:object:root=true
 
 // ProviderConfigUsageList contains a list of ProviderConfigUsage

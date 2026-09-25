@@ -45,37 +45,33 @@ func buildMinioURL(server string, useSSL bool) (string, error) {
 	return fmt.Sprintf("%s://%s", protocol, server), nil
 }
 
+// helper for parse bool values in creds
+func parseBool(valStr string) (bool, error) {
+	if valStr == "" {
+		return false, nil
+	}
+	return strconv.ParseBool(valStr)
+}
+
 // validateMinioCredentials validates Minio credentials by making a test API call
 func validateMinioCredentials(ctx context.Context, creds map[string]string) error {
 	server := creds["minio_server"]
 
-	// Parse SSL setting (default to false if not provided)
-	useSSL := false
-	if sslStr := creds["minio_ssl"]; sslStr != "" {
-		var err error
-		useSSL, err = strconv.ParseBool(sslStr)
-		if err != nil {
-			return fmt.Errorf("invalid minio_ssl value '%s': %w", sslStr, err)
-		}
+	useSSL, err := parseBool(creds["minio_ssl"])
+	if err != nil {
+		return fmt.Errorf("invalid minio_ssl value: %w", err)
 	}
 
-	// Parse insecure setting for SSL (default to false if not provided)
-	insecure := false
-	if insecureStr := creds["minio_insecure"]; insecureStr != "" {
-		var err error
-		insecure, err = strconv.ParseBool(insecureStr)
-		if err != nil {
-			return fmt.Errorf("invalid minio_insecure value '%s': %w", insecureStr, err)
-		}
+	insecure, err := parseBool(creds["minio_insecure"])
+	if err != nil {
+		return fmt.Errorf("invalid minio_insecure value: %w", err)
 	}
 
-	// Build the proper URL
 	url, err := buildMinioURL(server, useSSL)
 	if err != nil {
 		return err
 	}
 
-	// Create HTTP client with SSL configuration
 	transport := &http.Transport{}
 	if useSSL && insecure {
 		// #nosec G402 -- InsecureSkipVerify is explicitly requested by user configuration (minio_insecure)
@@ -87,7 +83,6 @@ func validateMinioCredentials(ctx context.Context, creds map[string]string) erro
 		Transport: transport,
 	}
 
-	// Make a test request to the Minio API
 	req, err := http.NewRequestWithContext(ctx, "GET", url+"/", nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
@@ -101,8 +96,6 @@ func validateMinioCredentials(ctx context.Context, creds map[string]string) erro
 		return fmt.Errorf("failed to read Minio server response at %s: %w", url, err)
 	}
 
-	// For Minio, we just need to verify the server is reachable
-	// The actual authentication will be handled by the Terraform provider
 	return nil
 }
 
@@ -188,4 +181,3 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 		Watches(&v1beta1.ProviderConfigUsage{}, &resource.EnqueueRequestForProviderConfig{}).
 		Complete(r)
 }
-

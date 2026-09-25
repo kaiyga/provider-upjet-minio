@@ -1,0 +1,1974 @@
+
+ == FILE ./cluster/images/provider-minio/Makefile
+# ====================================================================================
+# Setup Project
+
+include ../../../build/makelib/common.mk
+
+# ====================================================================================
+#  Options
+
+include ../../../build/makelib/imagelight.mk
+
+# ====================================================================================
+# Targets
+
+img.build:
+	@$(INFO) docker build $(IMAGE)
+	@$(MAKE) BUILD_ARGS="--load" img.build.shared
+	@$(OK) docker build $(IMAGE)
+
+img.publish:
+	@$(INFO) Skipping image publish for $(IMAGE)
+	@echo Publish is deferred to xpkg machinery
+	@$(OK) Image publish skipped for $(IMAGE)
+
+img.build.shared:
+	@cp Dockerfile $(IMAGE_TEMP_DIR) || $(FAIL)
+	@cp terraformrc.hcl $(IMAGE_TEMP_DIR) || $(FAIL)
+	@cp -r $(OUTPUT_DIR)/bin/ $(IMAGE_TEMP_DIR)/bin || $(FAIL)
+	@docker buildx build $(BUILD_ARGS) \
+		--platform $(IMAGE_PLATFORMS) \
+		--build-arg TERRAFORM_VERSION=$(TERRAFORM_VERSION) \
+		--build-arg TERRAFORM_PROVIDER_SOURCE=$(TERRAFORM_PROVIDER_SOURCE) \
+		--build-arg TERRAFORM_PROVIDER_VERSION=$(TERRAFORM_PROVIDER_VERSION) \
+		--build-arg TERRAFORM_PROVIDER_DOWNLOAD_NAME=$(TERRAFORM_PROVIDER_DOWNLOAD_NAME) \
+		--build-arg TERRAFORM_PROVIDER_DOWNLOAD_URL_PREFIX=$(TERRAFORM_PROVIDER_DOWNLOAD_URL_PREFIX) \
+		--build-arg TERRAFORM_NATIVE_PROVIDER_BINARY=$(TERRAFORM_NATIVE_PROVIDER_BINARY) \
+		-t $(IMAGE) \
+		$(IMAGE_TEMP_DIR) || $(FAIL)
+
+img.promote:
+	@$(INFO) Skipping image promotion from $(FROM_IMAGE) to $(TO_IMAGE)
+	@echo Promote is deferred to xpkg machinery
+	@$(OK) Image promotion skipped for $(FROM_IMAGE) to $(TO_IMAGE)
+
+ == FILE ./cluster/images/upjet-provider-template/Makefile
+# ====================================================================================
+# Setup Project
+
+include ../../../build/makelib/common.mk
+
+# ====================================================================================
+#  Options
+
+include ../../../build/makelib/imagelight.mk
+
+# ====================================================================================
+# Targets
+
+img.build:
+	@$(INFO) docker build $(IMAGE)
+	@$(MAKE) BUILD_ARGS="--load" img.build.shared
+	@$(OK) docker build $(IMAGE)
+
+img.publish:
+	@$(INFO) Skipping image publish for $(IMAGE)
+	@echo Publish is deferred to xpkg machinery
+	@$(OK) Image publish skipped for $(IMAGE)
+
+img.build.shared:
+	@cp Dockerfile $(IMAGE_TEMP_DIR) || $(FAIL)
+	@cp terraformrc.hcl $(IMAGE_TEMP_DIR) || $(FAIL)
+	@cp -r $(OUTPUT_DIR)/bin/ $(IMAGE_TEMP_DIR)/bin || $(FAIL)
+	@docker buildx build $(BUILD_ARGS) \
+		--platform $(IMAGE_PLATFORMS) \
+		--build-arg TERRAFORM_VERSION=$(TERRAFORM_VERSION) \
+		--build-arg TERRAFORM_PROVIDER_SOURCE=$(TERRAFORM_PROVIDER_SOURCE) \
+		--build-arg TERRAFORM_PROVIDER_VERSION=$(TERRAFORM_PROVIDER_VERSION) \
+		--build-arg TERRAFORM_PROVIDER_DOWNLOAD_NAME=$(TERRAFORM_PROVIDER_DOWNLOAD_NAME) \
+		--build-arg TERRAFORM_PROVIDER_DOWNLOAD_URL_PREFIX=$(TERRAFORM_PROVIDER_DOWNLOAD_URL_PREFIX) \
+		--build-arg TERRAFORM_NATIVE_PROVIDER_BINARY=$(TERRAFORM_NATIVE_PROVIDER_BINARY) \
+		-t $(IMAGE) \
+		$(IMAGE_TEMP_DIR) || $(FAIL)
+
+img.promote:
+	@$(INFO) Skipping image promotion from $(FROM_IMAGE) to $(TO_IMAGE)
+	@echo Promote is deferred to xpkg machinery
+	@$(OK) Image promotion skipped for $(FROM_IMAGE) to $(TO_IMAGE)
+
+ == FILE ./Makefile
+# ====================================================================================
+# Setup Project
+
+PROJECT_NAME ?= provider-minio  
+PROJECT_REPO ?= github.com/markopolo123/provider-upjet-minio
+
+export TERRAFORM_VERSION ?= 1.5.7
+
+# Do not allow a version of terraform greater than 1.5.x, due to versions 1.6+ being
+# licensed under BSL, which is not permitted.
+TERRAFORM_VERSION_VALID := $(shell [ "$(TERRAFORM_VERSION)" = "`printf "$(TERRAFORM_VERSION)\n1.6" | sort -V | head -n1`" ] && echo 1 || echo 0)
+
+export TERRAFORM_PROVIDER_SOURCE ?= aminueza/minio
+export TERRAFORM_PROVIDER_REPO ?= https://github.com/aminueza/terraform-provider-minio
+export TERRAFORM_PROVIDER_VERSION ?= 3.6.3
+export TERRAFORM_PROVIDER_DOWNLOAD_NAME ?= terraform-provider-minio
+export TERRAFORM_PROVIDER_DOWNLOAD_URL_PREFIX ?= https://github.com/aminueza/terraform-provider-minio/releases/download/v$(TERRAFORM_PROVIDER_VERSION)
+export TERRAFORM_NATIVE_PROVIDER_BINARY ?= terraform-provider-minio_v3.6.3_x5
+export TERRAFORM_DOCS_PATH ?= docs/resources
+
+
+PLATFORMS ?= linux_amd64 linux_arm64
+
+# -include will silently skip missing files, which allows us
+# to load those files with a target in the Makefile. If only
+# "include" was used, the make command would fail and refuse
+# to run a target until the include commands succeeded.
+-include build/makelib/common.mk
+
+# ====================================================================================
+# Setup Output
+
+-include build/makelib/output.mk
+
+# ====================================================================================
+# Setup Go
+
+# Set a sane default so that the nprocs calculation below is less noisy on the initial
+# loading of this file
+NPROCS ?= 1
+
+# each of our test suites starts a kube-apiserver and running many test suites in
+# parallel can lead to high CPU utilization. by default we reduce the parallelism
+# to half the number of CPU cores.
+GO_TEST_PARALLEL := $(shell echo $$(( $(NPROCS) / 2 )))
+
+GO_REQUIRED_VERSION ?= 1.21
+GOLANGCILINT_VERSION ?= 1.54.0
+GO_STATIC_PACKAGES = $(GO_PROJECT)/cmd/provider $(GO_PROJECT)/cmd/generator
+GO_LDFLAGS += -X $(GO_PROJECT)/internal/version.Version=$(VERSION)
+GO_SUBDIRS += cmd internal apis
+-include build/makelib/golang.mk
+
+# ====================================================================================
+# Setup Kubernetes tools
+
+KIND_VERSION = v0.15.0
+UP_VERSION = v0.39.0
+UP_CHANNEL = stable
+UPTEST_VERSION = v0.5.0
+-include build/makelib/k8s_tools.mk
+
+# ====================================================================================
+# Setup Images
+
+REGISTRY_ORGS ?= ghcr.io/crossplane-contrib
+IMAGES = $(PROJECT_NAME)
+-include build/makelib/imagelight.mk
+
+# ====================================================================================
+# Setup XPKG
+
+XPKG_REG_ORGS ?= ghcr.io/crossplane-contrib
+# NOTE(hasheddan): skip promoting on xpkg.upbound.io as channel tags are
+# inferred.
+XPKG_REG_ORGS_NO_PROMOTE ?= ghcr.io/crossplane-contrib
+XPKGS = $(PROJECT_NAME)
+-include build/makelib/xpkg.mk
+
+# ====================================================================================
+# Fallthrough
+
+# run `make help` to see the targets and options
+
+# We want submodules to be set up the first time `make` is run.
+# We manage the build/ folder and its Makefiles as a submodule.
+# The first time `make` is run, the includes of build/*.mk files will
+# all fail, and this target will be run. The next time, the default as defined
+# by the includes will be run instead.
+fallthrough: submodules
+	@echo Initial setup complete. Running make again . . .
+	@make
+
+# NOTE(hasheddan): we force image building to happen prior to xpkg build so that
+# we ensure image is present in daemon.
+xpkg.build.provider-minio: do.build.images
+
+# NOTE(hasheddan): we ensure up is installed prior to running platform-specific
+# build steps in parallel to avoid encountering an installation race condition.
+build.init: $(UP) check-terraform-version
+
+# ====================================================================================
+# Setup Terraform for fetching provider schema
+TERRAFORM := $(TOOLS_HOST_DIR)/terraform-$(TERRAFORM_VERSION)
+TERRAFORM_WORKDIR := $(WORK_DIR)/terraform
+TERRAFORM_PROVIDER_SCHEMA := config/schema.json
+
+check-terraform-version:
+ifneq ($(TERRAFORM_VERSION_VALID),1)
+	$(error invalid TERRAFORM_VERSION $(TERRAFORM_VERSION), must be less than 1.6.0 since that version introduced a not permitted BSL license))
+endif
+
+$(TERRAFORM): check-terraform-version
+	@$(INFO) installing terraform $(HOSTOS)-$(HOSTARCH)
+	@mkdir -p $(TOOLS_HOST_DIR)/tmp-terraform
+	@curl -fsSL https://releases.hashicorp.com/terraform/$(TERRAFORM_VERSION)/terraform_$(TERRAFORM_VERSION)_$(SAFEHOST_PLATFORM).zip -o $(TOOLS_HOST_DIR)/tmp-terraform/terraform.zip
+	@unzip $(TOOLS_HOST_DIR)/tmp-terraform/terraform.zip -d $(TOOLS_HOST_DIR)/tmp-terraform
+	@mv $(TOOLS_HOST_DIR)/tmp-terraform/terraform $(TERRAFORM)
+	@rm -fr $(TOOLS_HOST_DIR)/tmp-terraform
+	@$(OK) installing terraform $(HOSTOS)-$(HOSTARCH)
+
+$(TERRAFORM_PROVIDER_SCHEMA): $(TERRAFORM)
+	@$(INFO) generating provider schema for $(TERRAFORM_PROVIDER_SOURCE) $(TERRAFORM_PROVIDER_VERSION)
+	@mkdir -p $(TERRAFORM_WORKDIR)
+	@echo '{"terraform":[{"required_providers":[{"provider":{"source":"'"$(TERRAFORM_PROVIDER_SOURCE)"'","version":"'"$(TERRAFORM_PROVIDER_VERSION)"'"}}],"required_version":"'"$(TERRAFORM_VERSION)"'"}]}' > $(TERRAFORM_WORKDIR)/main.tf.json
+	@$(TERRAFORM) -chdir=$(TERRAFORM_WORKDIR) init > $(TERRAFORM_WORKDIR)/terraform-logs.txt 2>&1
+	@$(TERRAFORM) -chdir=$(TERRAFORM_WORKDIR) providers schema -json=true > $(TERRAFORM_PROVIDER_SCHEMA) 2>> $(TERRAFORM_WORKDIR)/terraform-logs.txt
+	@$(OK) generating provider schema for $(TERRAFORM_PROVIDER_SOURCE) $(TERRAFORM_PROVIDER_VERSION)
+
+pull-docs:
+	@if [ ! -d "$(WORK_DIR)/$(TERRAFORM_PROVIDER_SOURCE)" ]; then \
+  		mkdir -p "$(WORK_DIR)/$(TERRAFORM_PROVIDER_SOURCE)" && \
+		git clone -c advice.detachedHead=false --depth 1 --filter=blob:none --branch "v$(TERRAFORM_PROVIDER_VERSION)" --sparse "$(TERRAFORM_PROVIDER_REPO)" "$(WORK_DIR)/$(TERRAFORM_PROVIDER_SOURCE)"; \
+	fi
+	@git -C "$(WORK_DIR)/$(TERRAFORM_PROVIDER_SOURCE)" sparse-checkout set "$(TERRAFORM_DOCS_PATH)"
+
+generate.init: $(TERRAFORM_PROVIDER_SCHEMA) pull-docs
+
+.PHONY: $(TERRAFORM_PROVIDER_SCHEMA) pull-docs check-terraform-version
+# ====================================================================================
+# Targets
+
+# NOTE: the build submodule currently overrides XDG_CACHE_HOME in order to
+# force the Helm 3 to use the .work/helm directory. This causes Go on Linux
+# machines to use that directory as the build cache as well. We should adjust
+# this behavior in the build submodule because it is also causing Linux users
+# to duplicate their build cache, but for now we just make it easier to identify
+# its location in CI so that we cache between builds.
+go.cachedir:
+	@go env GOCACHE
+
+go.mod.cachedir:
+	@go env GOMODCACHE
+
+# Generate a coverage report for cobertura applying exclusions on
+# - generated file
+cobertura:
+	@cat $(GO_TEST_OUTPUT)/coverage.txt | \
+		grep -v zz_ | \
+		$(GOCOVER_COBERTURA) > $(GO_TEST_OUTPUT)/cobertura-coverage.xml
+
+# Update the submodules, such as the common build scripts.
+submodules:
+	@git submodule sync
+	@git submodule update --init --recursive
+
+# This is for running out-of-cluster locally, and is for convenience. Running
+# this make target will print out the command which was used. For more control,
+# try running the binary directly with different arguments.
+run: go.build
+	@$(INFO) Running Crossplane locally out-of-cluster . . .
+	@# To see other arguments that can be provided, run the command with --help instead
+	UPBOUND_CONTEXT="local" $(GO_OUT_DIR)/provider --debug
+
+# ====================================================================================
+# End to End Testing
+CROSSPLANE_VERSION = 1.16.0
+CROSSPLANE_NAMESPACE = upbound-system
+-include build/makelib/local.xpkg.mk
+-include build/makelib/controlplane.mk
+
+# This target requires the following environment variables to be set:
+# - UPTEST_EXAMPLE_LIST, a comma-separated list of examples to test
+#   To ensure the proper functioning of the end-to-end test resource pre-deletion hook, it is crucial to arrange your resources appropriately. 
+#   You can check the basic implementation here: https://github.com/crossplane/uptest/blob/main/internal/templates/03-delete.yaml.tmpl.
+# - UPTEST_CLOUD_CREDENTIALS (optional), multiple sets of AWS IAM User credentials specified as key=value pairs.
+#   The support keys are currently `DEFAULT` and `PEER`. So, an example for the value of this env. variable is:
+#   DEFAULT='[default]
+#   aws_access_key_id = REDACTED
+#   aws_secret_access_key = REDACTED'
+#   PEER='[default]
+#   aws_access_key_id = REDACTED
+#   aws_secret_access_key = REDACTED'
+#   The associated `ProviderConfig`s will be named as `default` and `peer`.
+# - UPTEST_DATASOURCE_PATH (optional), please see https://github.com/crossplane/uptest#injecting-dynamic-values-and-datasource
+uptest: $(UPTEST) $(KUBECTL) $(KUTTL)
+	@$(INFO) running automated tests
+	@KUBECTL=$(KUBECTL) KUTTL=$(KUTTL) $(UPTEST) e2e "${UPTEST_EXAMPLE_LIST}" --data-source="${UPTEST_DATASOURCE_PATH}" --setup-script=cluster/test/setup.sh --default-conditions="Test" || $(FAIL)
+	@$(OK) running automated tests
+
+local-deploy: build controlplane.up local.xpkg.deploy.provider.$(PROJECT_NAME)
+	@$(INFO) running locally built provider
+	@$(KUBECTL) wait provider.pkg $(PROJECT_NAME) --for condition=Healthy --timeout 5m
+	@$(KUBECTL) -n upbound-system wait --for=condition=Available deployment --all --timeout=5m
+	@$(OK) running locally built provider
+
+e2e: local-deploy uptest
+
+crddiff: $(UPTEST)
+	@$(INFO) Checking breaking CRD schema changes
+	@for crd in $${MODIFIED_CRD_LIST}; do \
+		if ! git cat-file -e "$${GITHUB_BASE_REF}:$${crd}" 2>/dev/null; then \
+			echo "CRD $${crd} does not exist in the $${GITHUB_BASE_REF} branch. Skipping..." ; \
+			continue ; \
+		fi ; \
+		echo "Checking $${crd} for breaking API changes..." ; \
+		changes_detected=$$($(UPTEST) crddiff revision <(git cat-file -p "$${GITHUB_BASE_REF}:$${crd}") "$${crd}" 2>&1) ; \
+		if [[ $$? != 0 ]] ; then \
+			printf "\033[31m"; echo "Breaking change detected!"; printf "\033[0m" ; \
+			echo "$${changes_detected}" ; \
+			echo ; \
+		fi ; \
+	done
+	@$(OK) Checking breaking CRD schema changes
+
+schema-version-diff:
+	@$(INFO) Checking for native state schema version changes
+	@export PREV_PROVIDER_VERSION=$$(git cat-file -p "${GITHUB_BASE_REF}:Makefile" | sed -nr 's/^export[[:space:]]*TERRAFORM_PROVIDER_VERSION[[:space:]]*:=[[:space:]]*(.+)/\1/p'); \
+	echo Detected previous Terraform provider version: $${PREV_PROVIDER_VERSION}; \
+	echo Current Terraform provider version: $${TERRAFORM_PROVIDER_VERSION}; \
+	mkdir -p $(WORK_DIR); \
+	git cat-file -p "$${GITHUB_BASE_REF}:config/schema.json" > "$(WORK_DIR)/schema.json.$${PREV_PROVIDER_VERSION}"; \
+	./scripts/version_diff.py config/generated.lst "$(WORK_DIR)/schema.json.$${PREV_PROVIDER_VERSION}" config/schema.json
+	@$(OK) Checking for native state schema version changes
+
+.PHONY: cobertura submodules fallthrough run crds.clean
+
+# ====================================================================================
+# Special Targets
+
+define CROSSPLANE_MAKE_HELP
+Crossplane Targets:
+    cobertura             Generate a coverage report for cobertura applying exclusions on generated files.
+    submodules            Update the submodules, such as the common build scripts.
+    run                   Run crossplane locally, out-of-cluster. Useful for development.
+
+Minio E2E Testing Targets:
+    bootstrap-minio       Bootstrap Kind cluster with Crossplane + Minio for testing.
+    cleanup-minio         Clean up Kind cluster and Minio resources.
+    e2e-minio            Run e2e tests with locally deployed Minio (requires bootstrap-minio first).
+    e2e-minio-comprehensive  Run comprehensive e2e test with all resources in one manifest.
+    full-e2e-minio       Complete workflow: bootstrap -> deploy -> test -> cleanup.
+    e2e-minio-external   Run e2e tests with external Minio (requires UPTEST_CLOUD_CREDENTIALS).
+
+endef
+# The reason CROSSPLANE_MAKE_HELP is used instead of CROSSPLANE_HELP is because the crossplane
+# binary will try to use CROSSPLANE_HELP if it is set, and this is for something different.
+export CROSSPLANE_MAKE_HELP
+
+crossplane.help:
+	@echo "$$CROSSPLANE_MAKE_HELP"
+
+help-special: crossplane.help
+
+.PHONY: crossplane.help help-special
+
+# ====================================================================================
+# Minio-specific test targets
+
+# Bootstrap Kind cluster with Minio for local development and testing
+bootstrap-minio: 
+	@$(INFO) bootstrapping Kind cluster with Minio
+	@./cluster/test/bootstrap-kind.sh
+	@$(OK) Kind cluster with Minio ready
+
+# Clean up Kind cluster and resources
+cleanup-minio:
+	@$(INFO) cleaning up Kind cluster and Minio resources
+	@./cluster/test/cleanup.sh
+	@$(OK) cleanup complete
+
+# Run e2e tests with locally deployed Minio
+e2e-minio: local-deploy
+	@$(INFO) running e2e tests with Minio
+	@UPTEST_EXAMPLE_LIST="examples/s3/bucket/bucket.yaml,examples/iam/user/user.yaml,examples/iam/policy/policy.yaml,examples/s3/bucketpolicy/bucketpolicy.yaml,examples/s3/object/object.yaml" $(UPTEST) e2e --setup-script=cluster/test/setup.sh --default-conditions="Ready,Synced" || $(FAIL)
+	@$(OK) e2e tests with Minio completed
+
+# Run comprehensive e2e tests using all-in-one manifest
+e2e-minio-comprehensive: local-deploy
+	@$(INFO) running comprehensive e2e test with all resources
+	@UPTEST_EXAMPLE_LIST="examples/e2e-test-suite.yaml" $(UPTEST) e2e --setup-script=cluster/test/setup.sh --default-conditions="Ready,Synced" || $(FAIL)
+	@$(OK) comprehensive e2e test completed
+
+# Full end-to-end workflow: bootstrap -> deploy -> test -> cleanup
+full-e2e-minio: bootstrap-minio e2e-minio cleanup-minio
+
+# Test with external Minio server (requires UPTEST_CLOUD_CREDENTIALS)
+e2e-minio-external: local-deploy
+	@$(INFO) running e2e tests with external Minio server
+	@if [ -z "$$UPTEST_CLOUD_CREDENTIALS" ]; then \
+		echo "Error: UPTEST_CLOUD_CREDENTIALS required for external Minio testing"; \
+		echo "Example: UPTEST_CLOUD_CREDENTIALS='{\"minio_server\":\"http://localhost:9000\",\"minio_user\":\"minioadmin\",\"minio_password\":\"minioadmin\",\"minio_region\":\"us-east-1\"}' make e2e-minio-external"; \
+		exit 1; \
+	fi
+	@UPTEST_EXAMPLE_LIST="examples/s3/bucket/bucket.yaml,examples/iam/user/user.yaml,examples/iam/policy/policy.yaml,examples/s3/bucketpolicy/bucketpolicy.yaml,examples/s3/object/object.yaml" $(UPTEST) e2e --setup-script=cluster/test/setup.sh --default-conditions="Ready,Synced" || $(FAIL)
+	@$(OK) e2e tests with external Minio completed
+
+.PHONY: bootstrap-minio cleanup-minio e2e-minio e2e-minio-comprehensive full-e2e-minio e2e-minio-external
+
+# TODO(negz): Update CI to use these targets.
+vendor: modules.download
+vendor.check: modules.check
+
+ == FILE ./build/makelib/xpkg.mk
+# Copyright 2022 The Upbound Authors. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# ====================================================================================
+# Options
+
+ifeq ($(origin XPKG_DIR),undefined)
+XPKG_DIR := $(ROOT_DIR)/package
+endif
+
+# xref https://github.com/upbound/provider-aws/pull/647, https://github.com/upbound/up/pull/309
+# in up v0.16.0, support for ProviderConfig documentation via object annotations was added.
+# by convention, we will assume the extensions file resides in the package directory.
+ifeq ($(origin XPKG_AUTH_EXT),undefined)
+XPKG_AUTH_EXT := $(XPKG_DIR)/auth.yaml
+endif
+
+ifeq ($(origin XPKG_EXAMPLES_DIR),undefined)
+XPKG_EXAMPLES_DIR := $(ROOT_DIR)/examples
+endif
+
+ifeq ($(origin XPKG_IGNORE),undefined)
+XPKG_IGNORE := ''
+endif
+
+ifeq ($(origin XPKG_OUTPUT_DIR),undefined)
+XPKG_OUTPUT_DIR := $(OUTPUT_DIR)/xpkg
+endif
+
+# shasum is not available on all systems. In that case, fall back to sha256sum.
+ifneq ($(shell type shasum 2>/dev/null),)
+SHA256SUM := shasum -a 256
+else
+SHA256SUM := sha256sum
+endif
+
+# a registry that is scoped to the current build tree on this host. this enables
+# us to have isolation between concurrent builds on the same system, as in the case
+# of multiple working directories or on a CI system with multiple executors. All images
+# tagged with this build registry can safely be untagged/removed at the end of the build.
+ifeq ($(origin BUILD_REGISTRY), undefined)
+BUILD_REGISTRY := build-$(shell echo $(HOSTNAME)-$(ROOT_DIR) | $(SHA256SUM) | cut -c1-8)
+endif
+
+XPKG_REG_ORGS ?= xpkg.upbound.io/crossplane
+XPKG_REG_ORGS_NO_PROMOTE ?= xpkg.upbound.io/crossplane
+XPKG_LINUX_PLATFORMS := $(filter linux_%,$(PLATFORMS))
+XPKG_ARCHS := $(subst linux_,,$(filter linux_%,$(PLATFORMS)))
+XPKG_PLATFORMS := $(subst _,/,$(subst $(SPACE),$(COMMA),$(filter linux_%,$(PLATFORMS))))
+XPKG_PLATFORMS_LIST := $(subst _,/,$(filter linux_%,$(PLATFORMS)))
+XPKG_PLATFORM := $(subst _,/,$(PLATFORM))
+
+# TODO(negz): Update these targets to use the crossplane CLI, not up.
+UP ?= up
+
+# =====================================================================================
+# XPKG Targets
+
+# 1: xpkg
+define xpkg.build.targets
+xpkg.build.$(1):
+	@$(INFO) Building package $(1)-$(VERSION).xpkg for $(PLATFORM)
+	@mkdir -p $(OUTPUT_DIR)/xpkg/$(PLATFORM)
+	@controller_arg=$$$$(grep -E '^kind:\s+Provider\s*$$$$' $(XPKG_DIR)/crossplane.yaml > /dev/null && echo "--controller $(BUILD_REGISTRY)/$(1)-$(ARCH)"); \
+	$(UP) xpkg build \
+		$$$${controller_arg} \
+		--package-root $(XPKG_DIR) \
+		--auth-ext $(XPKG_AUTH_EXT) \
+		--examples-root $(XPKG_EXAMPLES_DIR) \
+		--ignore $(XPKG_IGNORE) \
+		--output $(XPKG_OUTPUT_DIR)/$(PLATFORM)/$(1)-$(VERSION).xpkg || $(FAIL)
+	@$(OK) Built package $(1)-$(VERSION).xpkg for $(PLATFORM)
+xpkg.build: xpkg.build.$(1)
+endef
+$(foreach x,$(XPKGS),$(eval $(call xpkg.build.targets,$(x))))
+
+# 1: registry/org 2: repo
+define xpkg.release.targets
+xpkg.release.publish.$(1).$(2):
+	@$(INFO) Pushing package $(1)/$(2):$(VERSION)
+	@$(UP) xpkg push \
+		$(foreach p,$(XPKG_LINUX_PLATFORMS),--package $(XPKG_OUTPUT_DIR)/$(p)/$(2)-$(VERSION).xpkg ) \
+		$(1)/$(2):$(VERSION) || $(FAIL)
+	@$(OK) Pushed package $(1)/$(2):$(VERSION)
+xpkg.release.publish: xpkg.release.publish.$(1).$(2)
+
+xpkg.release.promote.$(1).$(2):
+	@$(INFO) Promoting package from $(1)/$(2):$(VERSION) to $(1)/$(2):$(CHANNEL)
+	@docker buildx imagetools create -t $(1)/$(2):$(CHANNEL) $(1)/$(2):$(VERSION)
+	@[ "$(CHANNEL)" = "master" ] || docker buildx imagetools create -t $(1)/$(2):$(VERSION)-$(CHANNEL) $(1)/$(2):$(VERSION)
+	@$(OK) Promoted package from $(1)/$(2):$(VERSION) to $(1)/$(2):$(CHANNEL)
+xpkg.release.promote: xpkg.release.promote.$(1).$(2)
+endef
+$(foreach r,$(XPKG_REG_ORGS), $(foreach x,$(XPKGS),$(eval $(call xpkg.release.targets,$(r),$(x)))))
+
+# ====================================================================================
+# Common Targets
+
+do.build.xpkgs: $(foreach i,$(XPKGS),xpkg.build.$(i))
+do.skip.xpkgs:
+	@$(OK) Skipping xpkg build for unsupported platform $(IMAGE_PLATFORM)
+
+ifneq ($(filter $(XPKG_PLATFORM),$(XPKG_PLATFORMS_LIST)),)
+build.artifacts.platform: do.build.xpkgs
+else
+build.artifacts.platform: do.skip.xpkgs
+endif
+
+# only publish package for main / master and release branches
+# TODO(hasheddan): remove master and support overriding
+ifneq ($(filter main master release-%,$(BRANCH_NAME)),)
+publish.artifacts: $(foreach r,$(XPKG_REG_ORGS), $(foreach x,$(XPKGS),xpkg.release.publish.$(r).$(x)))
+endif
+
+# NOTE(hasheddan): promotion fails using buildx imagetools create with some
+# registries, so a NO_PROMOTE list is supported here. Additionally, channels may
+# not be used on some registries that infer vanity tags.
+# https://github.com/containerd/containerd/issues/5978
+# https://github.com/estesp/manifest-tool/issues/122
+# https://github.com/moby/buildkit/issues/2438
+promote.artifacts: $(foreach r,$(filter-out $(XPKG_REG_ORGS_NO_PROMOTE),$(XPKG_REG_ORGS)), $(foreach x,$(XPKGS),xpkg.release.promote.$(r).$(x)))
+
+ == FILE ./build/makelib/controlplane.mk
+# Copyright 2022 The Upbound Authors. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+KIND_CLUSTER_NAME ?= local-dev
+CROSSPLANE_NAMESPACE ?= crossplane-system
+CROSSPLANE_VERSION ?=
+
+CONTROLPLANE_DUMP_DIRECTORY ?= $(OUTPUT_DIR)/controlplane-dump
+
+controlplane.up: $(HELM) $(KUBECTL) $(KIND)
+	@$(INFO) setting up controlplane
+	@$(KIND) get kubeconfig --name $(KIND_CLUSTER_NAME) >/dev/null 2>&1 || $(KIND) create cluster --name=$(KIND_CLUSTER_NAME)
+	@$(INFO) "setting kubectl context to kind-$(KIND_CLUSTER_NAME)"
+	@$(KUBECTL) config use-context "kind-$(KIND_CLUSTER_NAME)"
+	@$(HELM) repo add crossplane-stable https://charts.crossplane.io/stable
+	@$(HELM) repo update
+ifndef CROSSPLANE_ARGS
+	@$(INFO) setting up crossplane core without args
+	@$(HELM) get notes -n $(CROSSPLANE_NAMESPACE) crossplane >/dev/null 2>&1 || $(HELM) install crossplane --create-namespace --namespace=$(CROSSPLANE_NAMESPACE) crossplane-stable/crossplane --version $(CROSSPLANE_VERSION)
+else
+	@$(INFO) setting up crossplane core with args $(CROSSPLANE_ARGS)
+	@$(HELM) get notes -n $(CROSSPLANE_NAMESPACE) crossplane >/dev/null 2>&1 || $(HELM) install crossplane --create-namespace --namespace=$(CROSSPLANE_NAMESPACE) --set "args={${CROSSPLANE_ARGS}}" crossplane-stable/crossplane --version $(CROSSPLANE_VERSION)
+endif
+
+controlplane.down: $(KIND)
+	@$(INFO) deleting controlplane
+	@$(KIND) delete cluster --name=$(KIND_CLUSTER_NAME)
+	@$(OK) deleting controlplane
+
+controlplane.dump: $(KUBECTL)
+	mkdir -p $(CONTROLPLANE_DUMP_DIRECTORY)
+	@$(KUBECTL) cluster-info dump --output-directory $(CONTROLPLANE_DUMP_DIRECTORY) --all-namespaces || true
+	@$(KUBECTL) get crossplane --all-namespaces > $(CONTROLPLANE_DUMP_DIRECTORY)/all-crossplane.txt || true
+	@$(KUBECTL) get crossplane --all-namespaces -o yaml > $(CONTROLPLANE_DUMP_DIRECTORY)/all-crossplane.yaml || true
+
+ == FILE ./build/makelib/output.mk
+# Copyright 2016 The Upbound Authors. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# ====================================================================================
+# Options
+
+
+ifeq ($(VERSION),)
+$(error the VERSION variable must be set before including output.mk)
+endif
+
+
+
+ifeq ($(OUTPUT_DIR),)
+$(error the CHANNEL variable must be set before including output.mk)
+endif
+
+S3_CP := aws s3 cp --only-show-errors
+S3_SYNC := aws s3 sync --only-show-errors
+S3_SYNC_DEL := aws s3 sync --only-show-errors --delete
+
+# We will not set the artifact as "current" if this is a pre-release build.
+PRE_RELEASE ?= false
+
+# ====================================================================================
+# Targets
+
+output.init:
+	@mkdir -p $(OUTPUT_DIR)
+	@echo "$(VERSION)" > $(OUTPUT_DIR)/version
+
+output.clean:
+	@rm -fr $(OUTPUT_DIR)
+
+# if S3_BUCKET is set, add targets for publishing and promoting artifacts
+ifeq ($(S3_BUCKET),)
+	@$(INFO) skipped publishing outputs to an s3 bucket since 'S3_BUCKET' is not set
+else
+
+ifeq ($(CHANNEL),)
+$(error the CHANNEL variable must be set for publishing to the given S3_BUCKET)
+endif
+
+ifeq ($(BRANCH_NAME),)
+$(error the BRANCH_NAME variable must be set for publishing to the given S3_BUCKET)
+endif
+
+output.publish:
+	@$(INFO) publishing outputs to s3://$(S3_BUCKET)/build/$(BRANCH_NAME)/$(VERSION)
+	@$(S3_SYNC_DEL) $(OUTPUT_DIR) s3://$(S3_BUCKET)/build/$(BRANCH_NAME)/$(VERSION) || $(FAIL)
+	@$(OK) publishing outputs to s3://$(S3_BUCKET)/build/$(BRANCH_NAME)/$(VERSION)
+
+output.promote:
+	@$(INFO) promoting s3://$(S3_BUCKET)/$(CHANNEL)/$(VERSION)
+	@$(S3_SYNC_DEL) s3://$(S3_BUCKET)/build/$(BRANCH_NAME)/$(VERSION) s3://$(S3_BUCKET)/$(CHANNEL)/$(VERSION) || $(FAIL)
+ifneq ($(PRE_RELEASE),true)
+	@$(S3_SYNC_DEL) s3://$(S3_BUCKET)/build/$(BRANCH_NAME)/$(VERSION) s3://$(S3_BUCKET)/$(CHANNEL)/current || $(FAIL)
+endif
+	@$(OK) promoting s3://$(S3_BUCKET)/$(CHANNEL)/$(VERSION)
+
+publish.artifacts: output.publish
+promote.artifacts: output.promote
+
+endif
+
+# ====================================================================================
+# Common Targets
+
+build.init: output.init
+build.clean: output.clean
+
+ == FILE ./build/makelib/imagelight.mk
+# Copyright 2021 The Upbound Authors. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# ====================================================================================
+# Options
+
+ifeq ($(origin IMAGE_DIR),undefined)
+IMAGE_DIR := $(ROOT_DIR)/cluster/images
+endif
+
+ifeq ($(origin IMAGE_OUTPUT_DIR),undefined)
+IMAGE_OUTPUT_DIR := $(OUTPUT_DIR)/images/$(PLATFORM)
+endif
+
+ifeq ($(origin IMAGE_TEMP_DIR),undefined)
+IMAGE_TEMP_DIR := $(shell mktemp -d)
+endif
+
+# we don't support darwin os images and instead strictly target linux
+PLATFORM := $(subst darwin,linux,$(PLATFORM))
+
+# shasum is not available on all systems. In that case, fall back to sha256sum.
+ifneq ($(shell type shasum 2>/dev/null),)
+SHA256SUM := shasum -a 256
+else
+SHA256SUM := sha256sum
+endif
+
+# a registry that is scoped to the current build tree on this host. this enables
+# us to have isolation between concurrent builds on the same system, as in the case
+# of multiple working directories or on a CI system with multiple executors. All images
+# tagged with this build registry can safely be untagged/removed at the end of the build.
+ifeq ($(origin BUILD_REGISTRY), undefined)
+BUILD_REGISTRY := build-$(shell echo $(HOSTNAME)-$(ROOT_DIR) | $(SHA256SUM) | cut -c1-8)
+endif
+
+REGISTRY_ORGS ?= docker.io
+IMAGE_ARCHS := $(subst linux_,,$(filter linux_%,$(PLATFORMS)))
+IMAGE_PLATFORMS := $(subst _,/,$(subst $(SPACE),$(COMMA),$(filter linux_%,$(PLATFORMS))))
+IMAGE_PLATFORMS_LIST := $(subst _,/,$(filter linux_%,$(PLATFORMS)))
+IMAGE_PLATFORM := $(subst _,/,$(PLATFORM))
+
+# if set to 1 docker image caching will not be used.
+CACHEBUST ?= 0
+ifeq ($(CACHEBUST),1)
+BUILD_ARGS += --no-cache
+endif
+
+ifeq ($(HOSTOS),Linux)
+SELF_CID := $(shell cat /proc/self/cgroup | grep docker | grep -o -E '[0-9a-f]{64}' | head -n 1)
+endif
+
+# =====================================================================================
+# Image Targets
+
+do.img.clean:
+	@for i in $(CLEAN_IMAGES); do \
+		if [ -n "$$(docker images -q $$i)" ]; then \
+			for c in $$(docker ps -a -q --no-trunc --filter=ancestor=$$i); do \
+				if [ "$$c" != "$(SELF_CID)" ]; then \
+					echo stopping and removing container $${c} referencing image $$i; \
+					docker stop $${c}; \
+					docker rm $${c}; \
+				fi; \
+			done; \
+			echo cleaning image $$i; \
+			docker rmi $$i > /dev/null 2>&1 || true; \
+		fi; \
+	done
+
+# this will clean everything for this build
+img.clean:
+	@$(INFO) cleaning images for $(BUILD_REGISTRY)
+	@$(MAKE) do.img.clean CLEAN_IMAGES="$(shell docker images | grep -E '^$(BUILD_REGISTRY)/' | awk '{print $$1":"$$2}')"
+	@$(OK) cleaning images for $(BUILD_REGISTRY)
+
+img.done:
+	@rm -fr $(IMAGE_TEMP_DIR)
+
+# 1: registry 2: image
+define repo.targets
+img.release.publish.$(1).$(2):
+	@$(MAKE) -C $(IMAGE_DIR)/$(2) IMAGE_PLATFORMS=$(IMAGE_PLATFORMS) IMAGE=$(1)/$(2):$(VERSION) img.publish
+img.release.publish: img.release.publish.$(1).$(2)
+
+img.release.promote.$(1).$(2):
+	@$(MAKE) -C $(IMAGE_DIR)/$(2) TO_IMAGE=$(1)/$(2):$(CHANNEL) FROM_IMAGE=$(1)/$(2):$(VERSION) img.promote
+	@[ "$(CHANNEL)" = "master" ] || $(MAKE) -C $(IMAGE_DIR)/$(2) TO_IMAGE=$(1)/$(2):$(VERSION)-$(CHANNEL) FROM_IMAGE=$(1)/$(2):$(VERSION) img.promote
+img.release.promote: img.release.promote.$(1).$(2)
+
+img.release.clean.$(1).$(2):
+	@[ -z "$$$$(docker images -q $(1)/$(2):$(VERSION))" ] || docker rmi $(1)/$(2):$(VERSION)
+	@[ -z "$$$$(docker images -q $(1)/$(2):$(VERSION)-$(CHANNEL))" ] || docker rmi $(1)/$(2):$(VERSION)-$(CHANNEL)
+	@[ -z "$$$$(docker images -q $(1)/$(2):$(CHANNEL))" ] || docker rmi $(1)/$(2):$(CHANNEL)
+img.release.clean: img.release.clean.$(1).$(2)
+endef
+$(foreach r,$(REGISTRY_ORGS), $(foreach i,$(IMAGES),$(eval $(call repo.targets,$(r),$(i)))))
+
+# ====================================================================================
+# Common Targets
+
+do.build.image.%:
+	@$(MAKE) -C $(IMAGE_DIR)/$* IMAGE_PLATFORMS=$(IMAGE_PLATFORM) IMAGE=$(BUILD_REGISTRY)/$*-$(ARCH) img.build
+do.build.images: $(foreach i,$(IMAGES), do.build.image.$(i))
+do.skip.images:
+	@$(OK) Skipping image build for unsupported platform $(IMAGE_PLATFORM)
+
+ifneq ($(filter $(IMAGE_PLATFORM),$(IMAGE_PLATFORMS_LIST)),)
+build.artifacts.platform: do.build.images
+else
+build.artifacts.platform: do.skip.images
+endif
+build.done: img.done
+clean: img.clean img.release.clean
+
+# only publish images for main / master and release branches
+# TODO(hasheddan): remove master and support overriding
+ifneq ($(filter main master release-%,$(BRANCH_NAME)),)
+publish.artifacts: $(foreach r,$(REGISTRY_ORGS), $(foreach i,$(IMAGES),img.release.publish.$(r).$(i)))
+endif
+
+promote.artifacts: $(foreach r,$(REGISTRY_ORGS), $(foreach i,$(IMAGES),img.release.promote.$(r).$(i)))
+
+ == FILE ./build/makelib/golang.mk
+# Copyright 2016 The Upbound Authors. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# ====================================================================================
+# Options
+
+# Optional. The Go Binary to use
+GO ?= go
+
+# The go project including repo name, for example, github.com/rook/rook
+GO_PROJECT ?= $(PROJECT_REPO)
+
+# Optional. These are subdirs that we look for all go files to test, vet, and fmt
+GO_SUBDIRS ?= cmd pkg
+
+# Optional. Additional subdirs used for integration or e2e testings
+GO_INTEGRATION_TESTS_SUBDIRS ?=
+
+# Optional build flags passed to go tools
+GO_BUILDFLAGS ?=
+GO_LDFLAGS ?=
+GO_TAGS ?=
+GO_TEST_FLAGS ?=
+GO_TEST_SUITE ?=
+GO_COVER_MODE ?= count
+GO_CGO_ENABLED ?= 0
+
+# ====================================================================================
+# Setup go environment
+
+# turn on more verbose build when V=1
+ifeq ($(V),1)
+GO_LDFLAGS += -v -n
+GO_BUILDFLAGS += -x
+endif
+
+# whether to generate debug information in binaries. this includes DWARF and symbol tables.
+ifeq ($(DEBUG),0)
+GO_LDFLAGS += -s -w
+endif
+
+# set GOOS and GOARCH
+GOOS := $(OS)
+GOARCH := $(ARCH)
+export GOOS GOARCH
+
+# set GOHOSTOS and GOHOSTARCH
+GOHOSTOS := $(HOSTOS)
+GOHOSTARCH := $(TARGETARCH)
+
+GO_PACKAGES := $(foreach t,$(GO_SUBDIRS),$(GO_PROJECT)/$(t)/...)
+GO_INTEGRATION_TEST_PACKAGES := $(foreach t,$(GO_INTEGRATION_TESTS_SUBDIRS),$(GO_PROJECT)/$(t)/integration)
+
+ifneq ($(GO_TEST_PARALLEL),)
+GO_TEST_FLAGS += -p $(GO_TEST_PARALLEL)
+endif
+
+ifneq ($(GO_TEST_SUITE),)
+GO_TEST_FLAGS += -run '$(GO_TEST_SUITE)'
+endif
+
+GOPATH := $(shell $(GO) env GOPATH)
+
+GOHOST := GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) $(GO)
+GO_VERSION := $(shell $(GO) version | sed -ne 's/[^0-9]*\(\([0-9]\.\)\{0,4\}[0-9][^.]\).*/\1/p')
+
+# We use a consistent version of golangci-lint to ensure everyone gets the same
+# linters.
+GOLANGCILINT_VERSION ?= 1.54.0
+GOLANGCILINT := $(TOOLS_HOST_DIR)/golangci-lint-v$(GOLANGCILINT_VERSION)
+
+GO_BIN_DIR := $(abspath $(OUTPUT_DIR)/bin)
+GO_OUT_DIR := $(GO_BIN_DIR)/$(PLATFORM)
+GO_TEST_DIR := $(abspath $(OUTPUT_DIR)/tests)
+GO_TEST_OUTPUT := $(GO_TEST_DIR)/$(PLATFORM)
+GO_LINT_DIR := $(abspath $(OUTPUT_DIR)/lint)
+GO_LINT_OUTPUT := $(GO_LINT_DIR)/$(PLATFORM)
+
+ifeq ($(GOOS),windows)
+GO_OUT_EXT := .exe
+endif
+
+GO_COMMON_FLAGS = $(GO_BUILDFLAGS) -tags '$(GO_TAGS)' -trimpath
+GO_STATIC_FLAGS = $(GO_COMMON_FLAGS) -installsuffix static -ldflags '$(GO_LDFLAGS)'
+GO_GENERATE_FLAGS = $(GO_BUILDFLAGS) -tags 'generate $(GO_TAGS)'
+
+# ====================================================================================
+# Go Targets
+
+go.build:
+	@$(INFO) go build $(PLATFORM)
+	$(foreach p,$(GO_STATIC_PACKAGES),@CGO_ENABLED=0 $(GO) build -v -o $(GO_OUT_DIR)/$(lastword $(subst /, ,$(p)))$(GO_OUT_EXT) $(GO_STATIC_FLAGS) $(p) || $(FAIL) ${\n})
+	$(foreach p,$(GO_TEST_PACKAGES) $(GO_LONGHAUL_TEST_PACKAGES),@CGO_ENABLED=0 $(GO) test -c -o $(GO_TEST_OUTPUT)/$(lastword $(subst /, ,$(p)))$(GO_OUT_EXT) $(GO_STATIC_FLAGS) $(p) || $(FAIL) ${\n})
+	@$(OK) go build $(PLATFORM)
+
+go.install:
+	@$(INFO) go install $(PLATFORM)
+	$(foreach p,$(GO_STATIC_PACKAGES),@CGO_ENABLED=0 $(GO) install -v $(GO_STATIC_FLAGS) $(p) || $(FAIL) ${\n})
+	@$(OK) go install $(PLATFORM)
+
+go.test.unit:
+	@$(INFO) go test unit-tests
+	@mkdir -p $(GO_TEST_OUTPUT)
+	@CGO_ENABLED=$(GO_CGO_ENABLED) $(GOHOST) test -cover $(GO_STATIC_FLAGS) $(GO_PACKAGES) || $(FAIL)
+	@CGO_ENABLED=$(GO_CGO_ENABLED) $(GOHOST) test -v -covermode=$(GO_COVER_MODE) -coverprofile=$(GO_TEST_OUTPUT)/coverage.txt $(GO_TEST_FLAGS) $(GO_STATIC_FLAGS) $(GO_PACKAGES) 2>&1 | tee $(GO_TEST_OUTPUT)/unit-tests.log || $(FAIL)
+	@$(OK) go test unit-tests
+
+# TODO(negz): Do providers use this target? crossplane/crossplane doesn't.
+# https://github.com/crossplane/crossplane/blob/master/Makefile#L135
+go.test.integration:
+	@$(INFO) go test integration-tests
+	@mkdir -p $(GO_TEST_OUTPUT) || $(FAIL)
+	@CGO_ENABLED=0 $(GOHOST) test $(GO_STATIC_FLAGS) $(GO_INTEGRATION_TEST_PACKAGES) || $(FAIL)
+	@CGO_ENABLED=0 $(GOHOST) test $(GO_TEST_FLAGS) $(GO_STATIC_FLAGS) $(GO_INTEGRATION_TEST_PACKAGES) $(TEST_FILTER_PARAM) 2>&1 | tee $(GO_TEST_OUTPUT)/integration-tests.log || $(FAIL)
+	@$(OK) go test integration-tests
+
+go.lint: $(GOLANGCILINT)
+	@$(INFO) golangci-lint
+	@mkdir -p $(GO_LINT_OUTPUT)
+	@$(GOLANGCILINT) run $(GO_LINT_ARGS) || $(FAIL)
+	@$(OK) golangci-lint
+
+go.modules.check:
+	@$(INFO) verify go modules dependencies are tidy
+	@$(GO) mod tidy
+	@changed=$$(git diff --exit-code --name-only go.mod go.sum 2>&1) && [ -z "$${changed}" ] || (echo "go.mod is not tidy. Please run 'go mod tidy' and stage the changes" 1>&2; $(FAIL))
+	@$(OK) go modules are tidy
+	@$(INFO) verify go modules dependencies have expected content
+	@$(GO) mod verify || $(FAIL)
+	@$(OK) go modules dependencies verified
+
+go.modules.download:
+	@$(INFO) mod download
+	@$(GO) mod download || $(FAIL)
+	@$(OK) mod download
+
+go.clean:
+	@$(GO) clean -cache -testcache -modcache
+	@rm -fr $(GO_BIN_DIR) $(GO_TEST_DIR)
+
+go.generate:
+	@$(INFO) go generate $(PLATFORM)
+	@CGO_ENABLED=0 $(GOHOST) generate $(GO_GENERATE_FLAGS) $(GO_PACKAGES) $(GO_INTEGRATION_TEST_PACKAGES) || $(FAIL)
+	@$(OK) go generate $(PLATFORM)
+	@$(INFO) go mod tidy
+	@$(GOHOST) mod tidy || $(FAIL)
+	@$(OK) go mod tidy
+
+.PHONY: go.build go.install go.test.unit go.test.integration go.lint go.vendor go.vendor.check go.clean go.generate
+
+# ====================================================================================
+# Common Targets
+
+build.code.platform: go.build
+clean: go.clean
+lint.run: go.lint
+test.run: go.test.unit
+generate.run: go.generate
+
+# ====================================================================================
+# Special Targets
+
+modules.download: go.modules.download
+modules.check: go.modules.check
+
+define GO_HELPTEXT
+Go Targets:
+    modules.download Download Go modules.
+    modules.check    Fail the build if Go modules have changed.
+endef
+export GO_HELPTEXT
+
+go.help:
+	@echo "$$GO_HELPTEXT"
+
+help-special: go.help
+
+.PHONY: modules.download modules.check go.help
+
+# ====================================================================================
+# Tools install targets
+
+$(GOLANGCILINT):
+	@$(INFO) installing golangci-lint-v$(GOLANGCILINT_VERSION) $(SAFEHOSTPLATFORM)
+	@mkdir -p $(TOOLS_HOST_DIR)/tmp-golangci-lint || $(FAIL)
+	@curl -fsSL https://github.com/golangci/golangci-lint/releases/download/v$(GOLANGCILINT_VERSION)/golangci-lint-$(GOLANGCILINT_VERSION)-$(SAFEHOSTPLATFORM).tar.gz | tar -xz --strip-components=1 -C $(TOOLS_HOST_DIR)/tmp-golangci-lint || $(FAIL)
+	@mv $(TOOLS_HOST_DIR)/tmp-golangci-lint/golangci-lint $(GOLANGCILINT) || $(FAIL)
+	@rm -fr $(TOOLS_HOST_DIR)/tmp-golangci-lint
+	@$(OK) installing golangci-lint-v$(GOLANGCILINT_VERSION) $(SAFEHOSTPLATFORM)
+
+ == FILE ./build/makelib/common.mk
+# Copyright 2016 The Upbound Authors. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# remove default suffixes as we dont use them
+.SUFFIXES:
+
+# set the shell to bash always
+SHELL := /usr/bin/env bash
+
+# default target is build
+.PHONY: all
+all: build
+
+# ====================================================================================
+# Colors
+
+BLACK        := $(shell printf "\033[30m")
+BLACK_BOLD   := $(shell printf "\033[30;1m")
+RED          := $(shell printf "\033[31m")
+RED_BOLD     := $(shell printf "\033[31;1m")
+GREEN        := $(shell printf "\033[32m")
+GREEN_BOLD   := $(shell printf "\033[32;1m")
+YELLOW       := $(shell printf "\033[33m")
+YELLOW_BOLD  := $(shell printf "\033[33;1m")
+BLUE         := $(shell printf "\033[34m")
+BLUE_BOLD    := $(shell printf "\033[34;1m")
+MAGENTA      := $(shell printf "\033[35m")
+MAGENTA_BOLD := $(shell printf "\033[35;1m")
+CYAN         := $(shell printf "\033[36m")
+CYAN_BOLD    := $(shell printf "\033[36;1m")
+WHITE        := $(shell printf "\033[37m")
+WHITE_BOLD   := $(shell printf "\033[37;1m")
+CNone        := $(shell printf "\033[0m")
+
+# ====================================================================================
+# Logger
+
+TIME_LONG	= `date +%Y-%m-%d' '%H:%M:%S`
+TIME_SHORT	= `date +%H:%M:%S`
+TIME		= $(TIME_SHORT)
+
+INFO	= echo ${TIME} ${BLUE}[ .. ]${CNone}
+WARN	= echo ${TIME} ${YELLOW}[WARN]${CNone}
+ERR		= echo ${TIME} ${RED}[FAIL]${CNone}
+OK		= echo ${TIME} ${GREEN}[ OK ]${CNone}
+FAIL	= (echo ${TIME} ${RED}[FAIL]${CNone} && false)
+
+# ====================================================================================
+# Build Options
+
+# Set V=1 to turn on more verbose build
+V ?= 0
+ifeq ($(V),1)
+MAKEFLAGS += VERBOSE=1
+else
+MAKEFLAGS += --no-print-directory
+endif
+
+# Set DEBUG=1 to turn on a debug build
+DEBUG ?= 0
+
+# ====================================================================================
+# Release Options
+
+# TODO(hasheddan): change default to main and remove master as valid option.
+CHANNEL ?= master
+ifeq ($(filter master main alpha beta stable,$(CHANNEL)),)
+$(error invalid channel $(CHANNEL))
+endif
+
+ifeq ($(COMMIT_HASH),)
+override COMMIT_HASH := $(shell git rev-parse HEAD)
+endif
+
+ifeq ($(origin BRANCH_NAME), undefined)
+BRANCH_NAME := $(shell git rev-parse --abbrev-ref HEAD)
+endif
+
+REMOTE_NAME ?= origin
+
+# ====================================================================================
+# Platform and cross build options
+
+# all supported platforms we build for this can be set to other platforms if desired
+# we use the golang os and arch names for convenience
+PLATFORMS ?= darwin_amd64 darwin_arm64 windows_amd64 linux_amd64 linux_arm64
+
+# Set the host's OS. Only linux and darwin supported for now
+HOSTOS := $(shell uname -s | tr '[:upper:]' '[:lower:]')
+ifeq ($(filter darwin linux,$(HOSTOS)),)
+$(error build only supported on linux and darwin host currently)
+endif
+
+# Set the host's arch.
+HOSTARCH := $(shell uname -m)
+
+# If SAFEHOSTARCH and TARGETARCH have not been defined yet, use HOST
+ifeq ($(origin SAFEHOSTARCH),undefined)
+SAFEHOSTARCH := $(HOSTARCH)
+endif
+ifeq ($(origin TARGETARCH), undefined)
+TARGETARCH := $(HOSTARCH)
+endif
+
+# Automatically translate x86_64 to amd64
+ifeq ($(HOSTARCH),x86_64)
+SAFEHOSTARCH := amd64
+TARGETARCH := amd64
+endif
+
+# Automatically translate aarch64 to arm64
+ifeq ($(HOSTARCH),aarch64)
+SAFEHOSTARCH := arm64
+TARGETARCH := arm64
+endif
+
+ifeq ($(filter amd64 arm64 ppc64le ,$(SAFEHOSTARCH)),)
+$(error build only supported on amd64, arm64 and ppc64le host currently)
+endif
+
+# Standardize Host Platform variables
+HOST_PLATFORM := $(HOSTOS)_$(HOSTARCH)
+SAFEHOSTPLATFORM := $(HOSTOS)-$(SAFEHOSTARCH)
+SAFEHOST_PLATFORM := $(HOSTOS)_$(SAFEHOSTARCH)
+TARGET_PLATFORM := $(HOSTOS)_$(TARGETARCH)
+
+# Set the platform to build if not currently defined
+ifeq ($(origin PLATFORM),undefined)
+PLATFORM := $(TARGET_PLATFORM)
+# if the target platform is on the supported list add it to the single build target
+ifneq ($(filter $(PLATFORMS),$(TARGET_PLATFORM)),)
+BUILD_PLATFORMS = $(TARGET_PLATFORM)
+endif
+
+# for convenience always build the linux platform when building on mac
+ifneq ($(HOSTOS),linux)
+BUILD_PLATFORMS += linux_$(TARGETARCH)
+endif
+
+else
+BUILD_PLATFORMS = $(PLATFORM)
+endif
+
+OS := $(word 1, $(subst _, ,$(PLATFORM)))
+ARCH := $(word 2, $(subst _, ,$(PLATFORM)))
+
+ifeq ($(HOSTOS),darwin)
+NPROCS := $(shell sysctl -n hw.ncpu)
+else
+NPROCS := $(shell nproc)
+endif
+
+# ====================================================================================
+# Setup directories and paths
+
+# include the common make file
+COMMON_SELF_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
+
+# the root directory of this repo
+ifeq ($(origin ROOT_DIR),undefined)
+ROOT_DIR := $(abspath $(shell cd $(COMMON_SELF_DIR)/../.. && pwd -P))
+endif
+
+# the output directory which holds final build produced artifacts
+ifeq ($(origin OUTPUT_DIR),undefined)
+OUTPUT_DIR := $(ROOT_DIR)/_output
+endif
+
+# a working directory that holds all temporary or working items generated
+# during the build. The items will be discarded on a clean build and they
+# will never be cached.
+ifeq ($(origin WORK_DIR), undefined)
+WORK_DIR := $(ROOT_DIR)/.work
+endif
+
+# a directory that holds tools and other items that are safe to cache
+# across build invocations. removing this directory will trigger a
+# re-download and waste time. Its safe to cache this directory on CI systems
+ifeq ($(origin CACHE_DIR), undefined)
+CACHE_DIR := $(ROOT_DIR)/.cache
+endif
+
+TOOLS_DIR := $(CACHE_DIR)/tools
+TOOLS_HOST_DIR := $(TOOLS_DIR)/$(HOST_PLATFORM)
+
+# ====================================================================================
+# Version
+
+ifeq ($(origin HOSTNAME), undefined)
+HOSTNAME := $(shell hostname)
+endif
+
+# ====================================================================================
+# Version and Tagging
+
+# set if you want to use tag grouping, e.g. setting it to "aws" would produce tags like "aws/v0.1.0"
+# and release branch would be named as "release-aws-0.1" but the version would still be "v0.1.0".
+ifneq ($(PROJECT_VERSION_TAG_GROUP),)
+VERSION_TAG_PREFIX := $(PROJECT_VERSION_TAG_GROUP)/
+RELEASE_BRANCH_GROUP := $(PROJECT_VERSION_TAG_GROUP)-
+endif
+
+# set a semantic version number from git if VERSION is undefined.
+ifeq ($(origin VERSION), undefined)
+# check if there are any existing `git tag` values
+ifeq ($(shell git tag),)
+# no tags found - default to initial tag `v0.0.0`
+VERSION := $(shell echo "v0.0.0-$$(git rev-list HEAD --count)-g$$(git describe --dirty --always)" | sed 's/-/./2' | sed 's/-/./2' | sed 's/-/./2')
+else
+# use tags
+VERSION := $(shell git describe --dirty --always --tags --match '$(VERSION_TAG_PREFIX)*' | sed 's|.*/||' | sed 's/-/./2' | sed 's/-/./2' | sed 's/-/./2')
+endif
+endif
+export VERSION
+
+VERSION_REGEX := ^v\([0-9]*\)[.]\([0-9]*\)[.]\([0-9]*\)$$
+VERSION_VALID := $(shell echo "$(VERSION)" | grep -q '$(VERSION_REGEX)' && echo 1 || echo 0)
+
+# Given "v0.17.0-3.gb4eee9f.dirty" it returns "0".
+VERSION_MAJOR := $(shell echo "$(VERSION)" | cut -d'.' -f1 | sed '1s/^.//')
+
+# Given "v0.17.0-3.gb4eee9f.dirty" it returns "17".
+VERSION_MINOR := $(shell echo "$(VERSION)" | cut -d'.' -f2)
+
+# Given "v0.17.0-3.gb4eee9f.dirty" it returns "0-3.gb4eee9f.dirty".
+# Given "v0.17.1" it returns "1".
+VERSION_PATCH := $(shell echo "$(VERSION)" | cut -d'.' -f3-)
+
+release.tag:
+ifneq ($(VERSION_VALID),1)
+	$(error invalid version $(VERSION). must be a semantic version with v[Major].[Minor].[Patch] only)
+endif
+	@$(INFO) tagging commit hash $(COMMIT_HASH) with $(VERSION_TAG_PREFIX)$(VERSION)
+	git tag -f -m "$(VERSION_TAG_PREFIX)$(VERSION)" $(VERSION_TAG_PREFIX)$(VERSION) $(COMMIT_HASH)
+	git push $(REMOTE_NAME) $(VERSION_TAG_PREFIX)$(VERSION)
+	@set -e; if ! git ls-remote --heads $(REMOTE_NAME) | grep -q refs/heads/release-$(RELEASE_BRANCH_GROUP)$(VERSION_MAJOR).$(VERSION_MINOR); then \
+		echo === creating new release branch release-$(RELEASE_BRANCH_GROUP)$(VERSION_MAJOR).$(VERSION_MINOR) ;\
+		git branch -f release-$(RELEASE_BRANCH_GROUP)$(VERSION_MAJOR).$(VERSION_MINOR) $(COMMIT_HASH) ;\
+		git push $(REMOTE_NAME) release-$(RELEASE_BRANCH_GROUP)$(VERSION_MAJOR).$(VERSION_MINOR) ;\
+	fi
+	@$(OK) tagging
+
+# fail publish if the version is dirty
+version.isdirty:
+	@if [[ $(VERSION) = *.dirty ]]; then \
+		$(ERR) version '$(VERSION)' is dirty aborting publish. The following files changed: ;\
+		git status --short;\
+		exit 1; \
+	fi
+
+# ====================================================================================
+# Helpers
+
+SED_CMD?=sed -i -e
+
+COMMA := ,
+EMPTY :=
+SPACE := $(EMPTY) $(EMPTY)
+
+# define a newline
+define \n
+
+
+endef
+
+# ====================================================================================
+# This is a special target used to support the build container
+
+common.buildvars:
+	@echo PROJECT_NAME=$(PROJECT_NAME)
+	@echo PROJECT_REPO=$(PROJECT_REPO)
+	@echo BUILD_HOST=$(HOSTNAME)
+	@echo BUILD_REGISTRY=$(BUILD_REGISTRY)
+	@echo DOCKER_REGISTRY=$(DOCKER_REGISTRY)
+	@echo OUTPUT_DIR=$(OUTPUT_DIR)
+	@echo WORK_DIR=$(WORK_DIR)
+	@echo CACHE_DIR=$(CACHE_DIR)
+	@echo HOSTOS=$(HOSTOS)
+	@echo HOSTARCH=$(HOSTARCH)
+	@echo SAFEHOSTARCH=$(SAFEHOSTARCH)
+	@echo TARGETARCH=$(TARGETARCH)
+	@echo PLATFORM=$(PLATFORM)
+	@echo VERSION=$(VERSION)
+
+build.vars: common.buildvars
+
+# ====================================================================================
+# Common Targets - Build and Test workflow
+
+# run init steps before building code
+# these will run once regardless of how many platforms we are building
+build.init: ; @:
+
+# check the code with fmt, lint, vet and other source level checks pre build
+# these will run once regardless of how many platforms we are building
+build.check: ; @:
+
+# check the code with fmt, lint, vet and other source level checks pre build
+# these will run for each platform being built
+build.check.platform: ; @:
+
+# build code. this will run once regardless of platform
+build.code: ; @:
+
+# build code. this will run for each platform built
+build.code.platform: ; @:
+
+# build releasable artifacts. this will run once regardless of platform
+build.artifacts: ; @:
+
+# build releasable artifacts. this will run for each platform being built
+build.artifacts.platform: ; @:
+
+# runs at the end of the build to do any cleanup, caching etc.
+# these will run once regardless of how many platforms we are building
+build.done: ; @:
+
+# helper targets for building multiple platforms
+do.build.platform.%:
+	@$(MAKE) build.check.platform PLATFORM=$*
+	@$(MAKE) build.code.platform PLATFORM=$*
+do.build.platform: $(foreach p,$(PLATFORMS), do.build.platform.$(p))
+
+# helper targets for building multiple platforms
+do.build.artifacts.%:
+	@$(MAKE) build.artifacts.platform PLATFORM=$*
+do.build.artifacts: $(foreach p,$(PLATFORMS), do.build.artifacts.$(p))
+
+# build for all platforms
+build.all:
+	@$(MAKE) build.init
+	@$(MAKE) build.check
+	@$(MAKE) build.code
+	@$(MAKE) do.build.platform
+	@$(MAKE) build.artifacts
+	@$(MAKE) do.build.artifacts
+	@$(MAKE) build.done
+
+# build for a single platform if it's supported
+build:
+ifneq ($(BUILD_PLATFORMS),)
+	@$(MAKE) build.all PLATFORMS="$(BUILD_PLATFORMS)"
+else
+	@:
+endif
+
+# clean all files created during the build.
+clean:
+	@rm -fr $(OUTPUT_DIR) $(WORK_DIR)
+
+# clean all files created during the build, including caches across builds
+distclean: clean
+	@rm -fr $(CACHE_DIR)
+
+# run lint and other code analysis
+lint.init: ; @:
+lint.run: ; @:
+lint.done: ; @:
+lint:
+	@$(MAKE) lint.init
+	@$(MAKE) lint.run
+	@$(MAKE) lint.done
+
+# unit tests
+test.init: ; @:
+test.run: ; @:
+test.done: ; @:
+
+test:
+	@$(MAKE) test.init
+	@$(MAKE) test.run
+	@$(MAKE) test.done
+
+# e2e tests
+e2e.init: ; @:
+e2e.run: ; @:
+e2e.done: ; @:
+
+e2e:
+	@$(MAKE) e2e.init
+	@$(MAKE) e2e.run
+	@$(MAKE) e2e.done
+
+.PHONY: build.init build.check build.check.platform build.code build.code.platform build.artifacts build.artifacts.platform
+.PHONY: build.done do.build.platform.% do.build.platform do.build.artifacts.% do.build.artifacts
+.PHONY: build.all build clean distclean lint test test.init test.run test.done e2e.init e2e.run e2e.done
+
+# ====================================================================================
+# Release Targets
+
+# run init steps before publishing
+publish.init: ; @:
+
+# publish artifacts
+publish.artifacts: ; @:
+
+# publish all releasable artifacts
+publish: version.isdirty
+	@$(MAKE) publish.init
+	@$(MAKE) publish.artifacts
+
+# promote init runs before promote
+promote.init: ; @:
+
+# promote all artifacts to a release channel
+promote.artifacts: ; @:
+
+# promote to a release channel
+promote:
+	@$(MAKE) promote.init
+	@$(MAKE) promote.artifacts
+
+# tag a release
+tag: release.tag
+
+# run code generation
+generate.init: ; @:
+generate.run: ; @:
+generate.done: ; @:
+
+generate:
+	@$(MAKE) generate.init
+	@$(MAKE) generate.run
+	@$(MAKE) generate.done
+
+# prepare for code review
+reviewable:
+	@$(MAKE) generate
+	@$(MAKE) lint
+	@$(MAKE) test
+
+# ensure generate target doesn't create a diff
+check-diff: generate
+	@$(INFO) checking that branch is clean
+	@if git status --porcelain | grep . ; then $(ERR) There are uncommitted changes after running make generate. Please ensure you commit all generated files in this branch after running make generate. && false; else $(OK) branch is clean; fi
+
+.PHONY: publish.init publish.artifacts publish promote.init promote.artifacts promote tag generate reviewable check-diff
+
+# ====================================================================================
+# Help
+
+define HELPTEXT
+Usage: make [make-options] <target> [options]
+
+Common Targets:
+    build        Build source code and other artifacts for host platform.
+    build.all    Build source code and other artifacts for all platforms.
+    clean        Remove all files created during the build.
+    distclean    Remove all files created during the build including cached tools.
+    lint         Run lint and code analysis tools.
+    help         Show this help info.
+    test         Runs unit tests.
+    e2e          Runs end-to-end integration tests.
+    generate     Run code generation.
+    reviewable   Validate that a PR is ready for review.
+    check-diff   Ensure the reviewable target doesn't create a git diff.
+
+Common Options:
+    DEBUG        Whether to generate debug symbols. Default is 0.
+    PLATFORM     The platform to build.
+    SUITE        The test suite to run.
+    TESTFILTER   Tests to run in a suite.
+    V            Set to 1 enable verbose build. Default is 0.
+
+Release Targets:
+    publish      Build and publish final releasable artifacts
+    promote      Promote a release to a release channel
+    tag          Tag a release
+
+Release Options:
+    VERSION      The version information for binaries and releases.
+    CHANNEL      Sets the release channel. Can be set to master, main, alpha, beta, or stable.
+
+endef
+export HELPTEXT
+
+help-special: ; @:
+
+help:
+	@echo "$$HELPTEXT"
+	@$(MAKE) help-special
+
+.PHONY: help help-special
+
+ == FILE ./build/makelib/helm.mk
+# Copyright 2016 The Upbound Authors. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+ifeq ($(HELM_CHARTS),)
+$(error the variable HELM_CHARTS must be set prior to including helm.mk)
+endif
+
+# the base url where helm charts are published
+ifeq ($(HELM_BASE_URL),)
+$(error the variable HELM_BASE_URL must be set prior to including helm.mk)
+endif
+
+# the s3 bucket where helm charts are published
+ifeq ($(HELM_S3_BUCKET),)
+$(error the variable HELM_S3_BUCKET must be set prior to including helm.mk)
+endif
+
+# the charts directory
+HELM_CHARTS_DIR ?= $(ROOT_DIR)/cluster/charts
+
+# the charts output directory
+HELM_OUTPUT_DIR ?= $(OUTPUT_DIR)/charts
+
+# the helm index file
+HELM_INDEX := $(HELM_OUTPUT_DIR)/index.yaml
+
+HELM_DOCS_VERSION ?= v1.11.0
+HELM_DOCS_ENABLED ?= false
+HELM_DOCS := $(TOOLS_HOST_DIR)/helm-docs
+
+HELM_VALUES_TEMPLATE_SKIPPED ?= false
+
+HELM_CHART_LINT_STRICT ?= true
+ifeq ($(HELM_CHART_LINT_STRICT),true)
+HELM_CHART_LINT_STRICT_ARG += --strict
+endif
+
+# helm home
+HELM_HOME := $(abspath $(WORK_DIR)/helm)
+export HELM_HOME
+
+# https://helm.sh/docs/faq/#xdg-base-directory-support
+ifeq ($(USE_HELM3),true)
+HELM_CACHE_HOME = $(HELM_HOME)/cache
+HELM_CONFIG_HOME = $(HELM_HOME)/config
+HELM_DATA_HOME = $(HELM_HOME)/data
+export HELM_CACHE_HOME
+export HELM_CONFIG_HOME
+export HELM_DATA_HOME
+endif
+
+# remove the leading `v` for helm chart versions
+HELM_CHART_VERSION := $(VERSION:v%=%)
+
+#Chart Museum variables
+#MUSEUM_URL  ?= "https://helm.example.com/" - url for chart museum
+#If the following variables are set HTTP basic auth will be used. More details https://github.com/helm/chartmuseum/blob/master/README.md#basic-auth
+#MUSEUM_USER ?= "helm"
+#MUSEUM_PASS ?= "changeme"
+
+# ====================================================================================
+# Helm Targets
+$(HELM_HOME): $(HELM)
+	@mkdir -p $(HELM_HOME)
+	@if [ "$(USE_HELM3)" == "false" ]; then \
+		$(HELM) init -c --stable-repo-url=https://charts.helm.sh/stable; \
+	fi
+
+$(HELM_OUTPUT_DIR):
+	@mkdir -p $(HELM_OUTPUT_DIR)
+
+define helm.chart
+$(HELM_OUTPUT_DIR)/$(1)-$(HELM_CHART_VERSION).tgz: $(HELM_HOME) $(HELM_OUTPUT_DIR) $(shell find $(HELM_CHARTS_DIR)/$(1) -type f)
+	@$(INFO) helm package $(1) $(HELM_CHART_VERSION)
+	@if [ "$(USE_HELM3)" == "false" ]; then \
+		$(HELM) package --version $(HELM_CHART_VERSION) --app-version $(HELM_CHART_VERSION) --save=false -d $(HELM_OUTPUT_DIR) $(abspath $(HELM_CHARTS_DIR)/$(1)); \
+	else \
+		$(HELM) package --version $(HELM_CHART_VERSION) --app-version $(HELM_CHART_VERSION) -d $(HELM_OUTPUT_DIR) $(abspath $(HELM_CHARTS_DIR)/$(1)); \
+	fi
+	@$(OK) helm package $(1) $(HELM_CHART_VERSION)
+
+helm.generate.$(1): $(HELM_HOME) $(HELM_DOCS)
+	@$(INFO) helm-docs $(1)
+ifneq ($(HELM_DOCS_ENABLED),true)
+	@$(OK) helm docs not enabled [skipped]
+else ifneq ($(HELM_VALUES_TEMPLATE_SKIPPED),true)
+	@$(WARN) helm-docs not supported with templated values.yaml [skipped]
+else
+	@$(HELM_DOCS)
+	@$(OK) helm-docs $(1)
+endif
+
+helm.generate: helm.generate.$(1)
+
+helm.prepare.$(1): $(HELM_HOME)
+	@$(INFO) helm prepare $(1)
+ifeq ($(HELM_VALUES_TEMPLATE_SKIPPED),true)
+	@$(OK) HELM_VALUES_TEMPLATE_SKIPPED set to true [skipped]
+else
+	@$(WARN) templating helm values.yaml for %%VERSION%% is deprecated, use appVersion and an empty tag instead.
+	@cp -f $(HELM_CHARTS_DIR)/$(1)/values.yaml.tmpl $(HELM_CHARTS_DIR)/$(1)/values.yaml
+	@cd $(HELM_CHARTS_DIR)/$(1) && $(SED_CMD) 's|%%VERSION%%|$(VERSION)|g' values.yaml
+	@$(OK) helm prepare $(1)
+endif
+
+helm.prepare: helm.prepare.$(1)
+
+helm.lint.$(1): $(HELM_HOME) helm.prepare.$(1)
+	@rm -rf $(abspath $(HELM_CHARTS_DIR)/$(1)/charts)
+	@$(HELM) dependency update $(abspath $(HELM_CHARTS_DIR)/$(1))
+	@$(HELM) lint $(abspath $(HELM_CHARTS_DIR)/$(1)) $(HELM_CHART_LINT_ARGS_$(1)) $(HELM_CHART_LINT_STRICT_ARG)
+
+helm.lint: helm.lint.$(1)
+
+helm.dep.$(1): $(HELM_HOME)
+	@$(INFO) helm dep $(1) $(HELM_CHART_VERSION)
+	@$(HELM) dependency update $(abspath $(HELM_CHARTS_DIR)/$(1))
+	@$(OK) helm dep $(1) $(HELM_CHART_VERSION)
+
+helm.dep: helm.dep.$(1)
+
+$(HELM_INDEX): $(HELM_OUTPUT_DIR)/$(1)-$(HELM_CHART_VERSION).tgz
+endef
+$(foreach p,$(HELM_CHARTS),$(eval $(call helm.chart,$(p))))
+
+$(HELM_INDEX): $(HELM_HOME) $(HELM_OUTPUT_DIR)
+	@$(INFO) helm index
+	@$(HELM) repo index $(HELM_OUTPUT_DIR)
+	@$(OK) helm index
+
+helm.build: $(HELM_INDEX)
+
+helm.clean:
+	@rm -fr $(HELM_OUTPUT_DIR)
+
+helm.env: $(HELM)
+	@$(HELM) env
+
+# ====================================================================================
+# helm
+
+HELM_TEMP := $(shell mktemp -d)
+HELM_URL := $(HELM_BASE_URL)/$(CHANNEL)
+
+helm.promote: $(HELM_HOME)
+	@$(INFO) promoting helm charts
+#	copy existing charts to a temp dir, the combine with new charts, reindex, and upload
+	@$(S3_SYNC) s3://$(HELM_S3_BUCKET)/$(CHANNEL) $(HELM_TEMP)
+	@if [ "$(S3_BUCKET)" != "" ]; then \
+		$(S3_SYNC) s3://$(S3_BUCKET)/build/$(BRANCH_NAME)/$(VERSION)/charts $(HELM_TEMP); \
+	fi
+	@$(HELM) repo index --url $(HELM_URL) $(HELM_TEMP)
+	@$(S3_SYNC_DEL) $(HELM_TEMP) s3://$(HELM_S3_BUCKET)/$(CHANNEL)
+# 	re-upload index.yaml setting cache-control to ensure the file is not cached by http clients
+	@$(S3_CP) --cache-control "private, max-age=0, no-transform" $(HELM_TEMP)/index.yaml s3://$(HELM_S3_BUCKET)/$(CHANNEL)/index.yaml
+	@rm -fr $(HELM_TEMP)
+	@$(OK) promoting helm charts
+
+define museum.upload
+helm.museum.$(1):
+ifdef MUSEUM_URL
+	@$(INFO) pushing helm charts $(1) to chart museum $(MUSEUM_URL)
+ifneq ($(MUSEUM_USER)$(MUSEUM_PASS),"")
+	@$(INFO) curl -u $(MUSEUM_USER):$(MUSEUM_PASS) --data-binary '@$(HELM_OUTPUT_DIR)/$(1)-$(HELM_CHART_VERSION).tgz' $(MUSEUM_URL)/api/charts
+	@curl -u $(MUSEUM_USER):$(MUSEUM_PASS) --data-binary '@$(HELM_OUTPUT_DIR)/$(1)-$(HELM_CHART_VERSION).tgz' $(MUSEUM_URL)/api/charts
+else
+	@$(INFO) curl --data-binary '@$(HELM_OUTPUT_DIR)/$(1)-$(HELM_CHART_VERSION).tgz' $(MUSEUM_URL)/api/charts
+	@curl --data-binary '@$(HELM_OUTPUT_DIR)/$(1)-$(HELM_CHART_VERSION).tgz' $(MUSEUM_URL)/api/charts
+endif
+	@$(OK) pushing helm charts to chart museum
+endif
+
+helm.museum: helm.museum.$(1)
+endef
+$(foreach p,$(HELM_CHARTS),$(eval $(call museum.upload,$(p))))
+
+# ====================================================================================
+# Common Targets
+
+build.init: helm.prepare helm.lint
+build.check: helm.dep
+build.artifacts: helm.build
+clean: helm.clean
+lint: helm.lint
+promote.artifacts: helm.promote helm.museum
+generate.run: helm.generate
+
+# ====================================================================================
+# Special Targets
+
+dep: helm.dep
+
+define HELM_HELPTEXT
+Helm Targets:
+    dep          Build and publish final releasable artifacts
+
+endef
+export HELM_HELPTEXT
+
+helm.help:
+	@echo "$$HELM_HELPTEXT"
+
+help-special: helm.help
+
+# ====================================================================================
+# Tools install targets
+
+$(HELM_DOCS):
+	@$(INFO) installing helm-docs
+	@GOBIN=$(TOOLS_HOST_DIR) $(GOHOST) install github.com/norwoodj/helm-docs/cmd/helm-docs@$(HELM_DOCS_VERSION) || $(FAIL)
+	@$(OK) installing helm-docs
+
+ == FILE ./build/makelib/local.xpkg.mk
+# Copyright 2022 The Upbound Authors. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+KIND_CLUSTER_NAME ?= local-dev
+CROSSPLANE_NAMESPACE ?= crossplane-system
+XPKG_SKIP_DEP_RESOLUTION ?= false
+
+local.xpkg.init: $(KUBECTL)
+	@$(INFO) patching Crossplane with dev sidecar
+	@if ! $(KUBECTL) -n $(CROSSPLANE_NAMESPACE) get deployment crossplane -o jsonpath="{.spec.template.spec.containers[*].name}" | grep "dev" > /dev/null; then \
+		$(KUBECTL) -n $(CROSSPLANE_NAMESPACE) patch deployment/crossplane --type='json' -p='[{"op":"add","path":"/spec/template/spec/containers/1","value":{"image":"alpine","name":"dev","command":["sleep","infinity"],"volumeMounts":[{"mountPath":"/tmp/cache","name":"package-cache"}]}},{"op":"add","path":"/spec/template/metadata/labels/patched","value":"true"}]'; \
+		$(KUBECTL) -n $(CROSSPLANE_NAMESPACE) wait deploy crossplane --for condition=Available --timeout=60s; \
+		$(KUBECTL) -n $(CROSSPLANE_NAMESPACE) wait pods -l app=crossplane,patched=true --for condition=Ready --timeout=60s; \
+	fi
+	@$(OK) patching Crossplane with dev sidecar
+
+# TODO(negz): Update this target to use the crossplane CLI, not up. We'll need
+# to add the `xpkg extract` subcommand to the crossplane CLI.
+
+local.xpkg.sync: local.xpkg.init $(UP)
+	@$(INFO) copying local xpkg cache to Crossplane pod
+	@mkdir -p $(XPKG_OUTPUT_DIR)/cache
+	@for pkg in $(XPKG_OUTPUT_DIR)/linux_*/*; do $(UP) xpkg xp-extract --from-xpkg $$pkg -o $(XPKG_OUTPUT_DIR)/cache/$$(basename $$pkg .xpkg).gz; done
+	@XPPOD=$$($(KUBECTL) -n $(CROSSPLANE_NAMESPACE) get pod -l app=crossplane,patched=true -o jsonpath="{.items[0].metadata.name}"); \
+		$(KUBECTL) -n $(CROSSPLANE_NAMESPACE) cp $(XPKG_OUTPUT_DIR)/cache -c dev $$XPPOD:/tmp
+	@$(OK) copying local xpkg cache to Crossplane pod
+
+local.xpkg.deploy.configuration.%: local.xpkg.sync
+	@$(INFO) deploying configuration package $* $(VERSION)
+	@echo '{"apiVersion":"pkg.crossplane.io/v1","kind":"Configuration","metadata":{"name":"$*"},"spec":{"package":"$*-$(VERSION).gz","packagePullPolicy":"Never"}}' | $(KUBECTL) apply -f -
+	@$(OK) deploying configuration package $* $(VERSION)
+
+local.xpkg.deploy.provider.%: $(KIND) local.xpkg.sync
+	@$(INFO) deploying provider package $* $(VERSION)
+	@$(KIND) load docker-image $(BUILD_REGISTRY)/$*-$(ARCH) -n $(KIND_CLUSTER_NAME)
+	@echo '{"apiVersion":"pkg.crossplane.io/v1beta1","kind":"DeploymentRuntimeConfig","metadata":{"name":"runtimeconfig-$*"},"spec":{"deploymentTemplate":{"spec":{"selector":{},"strategy":{},"template":{"spec":{"containers":[{"args":["--debug"],"image":"$(BUILD_REGISTRY)/$*-$(ARCH)","name":"package-runtime"}]}}}}}}' | $(KUBECTL) apply -f -
+	@echo '{"apiVersion":"pkg.crossplane.io/v1","kind":"Provider","metadata":{"name":"$*"},"spec":{"package":"$*-$(VERSION).gz","skipDependencyResolution": $(XPKG_SKIP_DEP_RESOLUTION), "packagePullPolicy":"Never","runtimeConfigRef":{"name":"runtimeconfig-$*"}}}' | $(KUBECTL) apply -f -
+	@$(OK) deploying provider package $* $(VERSION)
+
+ == FILE ./build/makelib/k8s_tools.mk
+# Copyright 2016 The Upbound Authors. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# ====================================================================================
+# Options
+
+# the version of istio to use
+ISTIO_VERSION ?= 1.12.9
+ISTIO := $(TOOLS_HOST_DIR)/istioctl-$(ISTIO_VERSION)
+ISTIOOS := $(HOSTOS)
+ISTIO_DOWNLOAD_TUPLE := $(SAFEHOSTPLATFORM)
+ifeq ($(HOSTOS),darwin)
+ISTIO_DOWNLOAD_TUPLE := osx-$(SAFEHOSTARCH)
+endif
+
+# the version of kind to use
+KIND_VERSION ?= v0.16.0
+KIND := $(TOOLS_HOST_DIR)/kind-$(KIND_VERSION)
+
+# the version of kubectl to use
+KUBECTL_VERSION ?= v1.24.3
+KUBECTL := $(TOOLS_HOST_DIR)/kubectl-$(KUBECTL_VERSION)
+
+# the version of kustomize to use
+KUSTOMIZE_VERSION ?= v4.5.5
+KUSTOMIZE := $(TOOLS_HOST_DIR)/kustomize-$(KUSTOMIZE_VERSION)
+
+# the version of olm-bundle to use
+OLMBUNDLE_VERSION ?= v0.5.2
+OLMBUNDLE := $(TOOLS_HOST_DIR)/olm-bundle-$(OLMBUNDLE_VERSION)
+
+# the version of up to use
+UP_VERSION ?= v0.28.0
+UP_CHANNEL ?= stable
+UP := $(TOOLS_HOST_DIR)/up-$(UP_VERSION)
+
+# the version of crossplane cli to use
+CROSSPLANE_CLI_VERSION ?= v1.14.5
+CROSSPLANE_CLI_CHANNEL ?= stable
+CROSSPLANE_CLI := $(TOOLS_HOST_DIR)/crossplane-cli-$(CROSSPLANE_CLI_VERSION)
+
+# the version of helm 3 to use
+USE_HELM ?= false
+HELM_VERSION ?= v3.9.1
+HELM := $(TOOLS_HOST_DIR)/helm-$(HELM_VERSION)
+
+# If we enable HELM we alias HELM to be HELM
+ifeq ($(USE_HELM),true)
+HELM_VERSION ?= $(HELM_VERSION)
+HELM := $(HELM)
+else
+HELM_VERSION ?= v2.17.0
+HELM := $(TOOLS_HOST_DIR)/helm-$(HELM_VERSION)
+endif
+
+# the version of kuttl to use
+KUTTL_VERSION ?= 0.12.1
+KUTTL := $(TOOLS_HOST_DIR)/kuttl-$(KUTTL_VERSION)
+
+# the version of chainsaw to use
+CHAINSAW_VERSION ?= 0.2.0
+CHAINSAW := $(TOOLS_HOST_DIR)/chainsaw-$(CHAINSAW_VERSION)
+
+# the version of uptest to use
+UPTEST_VERSION ?= v0.1.0
+UPTEST := $(TOOLS_HOST_DIR)/uptest-$(UPTEST_VERSION)
+
+# the version of yq to use
+YQ_VERSION ?= v4.40.5
+YQ := $(TOOLS_HOST_DIR)/yq-$(YQ_VERSION)
+
+# ====================================================================================
+# Common Targets
+
+k8s_tools.buildvars:
+	@echo KIND=$(KIND)
+	@echo KUBECTL=$(KUBECTL)
+	@echo KUSTOMIZE=$(KUSTOMIZE)
+	@echo OLM_BUNDLE=$(OLM_BUNDLE)
+	@echo UP=$(UP)
+	@echo HELM=$(HELM)
+	@echo KUTTL=$(KUTTL)
+	@echo CHAINSAW=$(CHAINSAW)
+	@echo YQ=$(YQ)
+
+build.vars: k8s_tools.buildvars
+
+# ====================================================================================
+# tools
+
+# istio download and install
+$(ISTIO):
+	@$(INFO) installing istio $(ISTIO_VERSION)
+	@mkdir -p $(TOOLS_HOST_DIR)/tmp-istio || $(FAIL)
+	@curl --progress-bar -fsSL https://github.com/istio/istio/releases/download/$(ISTIO_VERSION)/istio-$(ISTIO_VERSION)-$(ISTIO_DOWNLOAD_TUPLE).tar.gz | tar -xz -C $(TOOLS_HOST_DIR)/tmp-istio || $(FAIL)
+	@mv $(TOOLS_HOST_DIR)/tmp-istio/istio-$(ISTIO_VERSION)/bin/istioctl $(ISTIO) || $(FAIL)
+	@rm -fr $(TOOLS_HOST_DIR)/tmp-istio || $(FAIL)
+	@$(OK) $(ISTIO) installing istio $(ISTIO_VERSION)
+
+# kind download and install
+$(KIND):
+	@$(INFO) installing kind $(KIND_VERSION)
+	@mkdir -p $(TOOLS_HOST_DIR) || $(FAIL)
+	@curl -fsSLo $(KIND) https://github.com/kubernetes-sigs/kind/releases/download/$(KIND_VERSION)/kind-$(SAFEHOSTPLATFORM) || $(FAIL)
+	@chmod +x $(KIND)
+	@$(OK) installing kind $(KIND_VERSION)
+
+# kubectl download and install
+$(KUBECTL):
+	@$(INFO) installing kubectl $(KUBECTL_VERSION)
+	@curl -fsSLo $(KUBECTL) --create-dirs https://storage.googleapis.com/kubernetes-release/release/$(KUBECTL_VERSION)/bin/$(HOSTOS)/$(SAFEHOSTARCH)/kubectl || $(FAIL)
+	@chmod +x $(KUBECTL)
+	@$(OK) installing kubectl $(KUBECTL_VERSION)
+
+# kustomize download and install
+$(KUSTOMIZE):
+	@$(INFO) installing kustomize $(KUSTOMIZE_VERSION)
+	@mkdir -p $(TOOLS_HOST_DIR)/tmp-kustomize
+	@curl -fsSL https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/$(KUSTOMIZE_VERSION)/kustomize_$(KUSTOMIZE_VERSION)_$(SAFEHOST_PLATFORM).tar.gz | tar -xz -C $(TOOLS_HOST_DIR)/tmp-kustomize
+	@mv $(TOOLS_HOST_DIR)/tmp-kustomize/kustomize $(KUSTOMIZE)
+	@rm -fr $(TOOLS_HOST_DIR)/tmp-kustomize
+	@$(OK) installing kustomize $(KUSTOMIZE_VERSION)
+
+# olm-bundle download and install
+$(OLMBUNDLE):
+	@$(INFO) installing olm-bundle $(OLMBUNDLE_VERSION)
+	@curl -fsSLo $(OLMBUNDLE) https://github.com/upbound/olm-bundle/releases/download/$(OLMBUNDLE_VERSION)/olm-bundle_$(SAFEHOSTPLATFORM) || $(FAIL)
+	@chmod +x $(OLMBUNDLE)
+	@$(OK) installing olm-bundle $(OLMBUNDLE_VERSION)
+
+# up download and install
+$(UP):
+	@$(INFO) installing up $(UP_VERSION)
+	@curl -fsSLo $(UP) --create-dirs https://cli.upbound.io/$(UP_CHANNEL)/$(UP_VERSION)/bin/$(SAFEHOST_PLATFORM)/up?source=build || $(FAIL)
+	@chmod +x $(UP)
+	@$(OK) installing up $(UP_VERSION)
+
+# Crossplane CLI download and install
+$(CROSSPLANE_CLI):
+	@$(INFO) installing Crossplane CLI $(CROSSPLANE_CLI_VERSION)
+	@curl -fsSLo $(CROSSPLANE_CLI) --create-dirs https://releases.crossplane.io/$(CROSSPLANE_CLI_CHANNEL)/$(CROSSPLANE_CLI_VERSION)/bin/$(SAFEHOST_PLATFORM)/crank?source=build || $(FAIL)
+	@chmod +x $(CROSSPLANE_CLI)
+	@$(OK) installing Crossplane CLI $(CROSSPLANE_CLI_VERSION)
+
+# helm download and install
+$(HELM):
+	@$(INFO) installing helm $(HELM_VERSION)
+	@mkdir -p $(TOOLS_HOST_DIR)/tmp-helm
+	@curl -fsSL https://get.helm.sh/helm-$(HELM_VERSION)-$(SAFEHOSTPLATFORM).tar.gz | tar -xz -C $(TOOLS_HOST_DIR)/tmp-helm
+	@mv $(TOOLS_HOST_DIR)/tmp-helm/$(SAFEHOSTPLATFORM)/helm $(HELM)
+	@rm -fr $(TOOLS_HOST_DIR)/tmp-helm
+	@$(OK) installing helm $(HELM_VERSION)
+
+# kuttl download and install
+$(KUTTL):
+	@$(INFO) installing kuttl $(KUTTL_VERSION)
+	@mkdir -p $(TOOLS_HOST_DIR)
+	@curl -fsSLo $(KUTTL) --create-dirs https://github.com/kudobuilder/kuttl/releases/download/v$(KUTTL_VERSION)/kubectl-kuttl_$(KUTTL_VERSION)_$(HOST_PLATFORM) || $(FAIL)
+	@chmod +x $(KUTTL)
+	@$(OK) installing kuttl $(KUTTL_VERSION)
+
+# chainsaw download and install
+$(CHAINSAW):
+	@$(INFO) installing chainsaw $(CHAINSAW_VERSION)
+	@mkdir -p $(TOOLS_HOST_DIR)
+	@curl -fsSLo $(CHAINSAW).tar.gz --create-dirs https://github.com/kyverno/chainsaw/releases/download/v$(CHAINSAW_VERSION)/chainsaw_$(HOST_PLATFORM).tar.gz || $(FAIL)
+	@tar -xvf $(CHAINSAW).tar.gz chainsaw
+	@mv chainsaw $(CHAINSAW)
+	@chmod +x $(CHAINSAW)
+	@rm $(CHAINSAW).tar.gz
+	@$(OK) installing chainsaw $(CHAINSAW_VERSION)
+
+# uptest download and install
+$(UPTEST):
+	@$(INFO) installing uptest $(UPTEST)
+	@mkdir -p $(TOOLS_HOST_DIR)
+	@curl -fsSLo $(UPTEST) https://github.com/upbound/uptest/releases/download/$(UPTEST_VERSION)/uptest_$(SAFEHOSTPLATFORM) || $(FAIL)
+	@chmod +x $(UPTEST)
+	@$(OK) installing uptest $(UPTEST)
+
+# yq download and install
+$(YQ):
+	@$(INFO) installing yq $(YQ_VERSION)
+	@mkdir -p $(TOOLS_HOST_DIR) && \
+	curl -fsSLo $(YQ) https://github.com/mikefarah/yq/releases/download/$(YQ_VERSION)/yq_$(SAFEHOST_PLATFORM) && \
+	chmod +x $(YQ) || $(FAIL)
+	@$(OK) installing yq $(YQ_VERSION)

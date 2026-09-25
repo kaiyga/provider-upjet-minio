@@ -36,7 +36,6 @@ func GetProvider() *ujconfig.Provider {
 			ExternalNameConfigurations(),
 		))
 
-
 	for _, configure := range []func(provider *ujconfig.Provider){
 		// add custom config functions
 		s3.Configure,

@@ -56,19 +56,19 @@ func TestBuildMinioURL(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := buildMinioURL(tt.server, tt.useSSL)
-			
+
 			if tt.expectErr {
 				if err == nil {
 					t.Errorf("expected error but got none")
 				}
 				return
 			}
-			
+
 			if err != nil {
 				t.Errorf("unexpected error: %v", err)
 				return
 			}
-			
+
 			if result != tt.expected {
 				t.Errorf("expected %s but got %s", tt.expected, result)
 			}
@@ -92,7 +92,7 @@ func TestValidateMinioCredentials(t *testing.T) {
 	defer httpsServer.Close()
 
 	// Extract host:port from test servers
-	httpServerAddr := httpServer.URL[7:] // Remove "http://" prefix
+	httpServerAddr := httpServer.URL[7:]   // Remove "http://" prefix
 	httpsServerAddr := httpsServer.URL[8:] // Remove "https://" prefix
 
 	tests := []struct {
@@ -136,11 +136,11 @@ func TestValidateMinioCredentials(t *testing.T) {
 		{
 			name: "Invalid insecure value",
 			creds: map[string]string{
-				"minio_server":    httpServerAddr,
-				"minio_user":      "testuser",
-				"minio_password":  "testpass",
-				"minio_ssl":       "false",
-				"minio_insecure":  "maybe",
+				"minio_server":   httpServerAddr,
+				"minio_user":     "testuser",
+				"minio_password": "testpass",
+				"minio_ssl":      "false",
+				"minio_insecure": "maybe",
 			},
 			expectErr: true,
 			errMsg:    "invalid minio_insecure value",
@@ -172,7 +172,7 @@ func TestValidateMinioCredentials(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := validateMinioCredentials(context.Background(), tt.creds)
-			
+
 			if tt.expectErr {
 				if err == nil {
 					t.Errorf("expected error but got none")
@@ -181,7 +181,7 @@ func TestValidateMinioCredentials(t *testing.T) {
 				}
 				return
 			}
-			
+
 			if err != nil {
 				t.Errorf("unexpected error: %v", err)
 			}
@@ -234,11 +234,11 @@ func TestValidateMinioCredentials_DefaultValues(t *testing.T) {
 
 // Helper function to check if a string contains a substring
 func containsString(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || 
-		(len(s) > len(substr) && 
-			(s[:len(substr)] == substr || 
-			 s[len(s)-len(substr):] == substr || 
-			 findSubstring(s, substr))))
+	return len(s) >= len(substr) && (s == substr ||
+		(len(s) > len(substr) &&
+			(s[:len(substr)] == substr ||
+				s[len(s)-len(substr):] == substr ||
+				findSubstring(s, substr))))
 }
 
 func findSubstring(s, substr string) bool {
