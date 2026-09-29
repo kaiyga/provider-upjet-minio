@@ -22,5 +22,8 @@ func Configure(p *config.Provider) {
 	p.AddResourceConfigurator("minio_iam_service_account", func(r *config.Resource) {
 		r.ShortGroup = "iam"
 		r.Kind = "ServiceAccount"
+		r.LateInitializer = config.LateInitializer{
+        IgnoredFields: []string{"expiration"},
+    }
 	})
 }
