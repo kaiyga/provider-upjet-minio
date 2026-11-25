@@ -23,7 +23,7 @@ func Configure(p *config.Provider) {
 		r.ShortGroup = "iam"
 		r.Kind = "ServiceAccount"
 		r.LateInitializer = config.LateInitializer{
-        IgnoredFields: []string{"expiration"},
-    }
+			IgnoredFields: []string{"expiration"},
+		}
 	})
 }
